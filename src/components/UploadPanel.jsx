@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
 import { parseExcelFile, parseExcelUrl } from "../utils/excelParser";
 import { sampleReportFiles } from "../data/mockData";
+import { trackEvent } from "../utils/tracking";
 
 export default function UploadPanel({ onUploadComplete, history }) {
   const inputRef = useRef(null);
@@ -13,6 +14,10 @@ export default function UploadPanel({ onUploadComplete, history }) {
 
   const parseFiles = async (files) => {
     if (!files.length) return;
+
+    await trackEvent("upload_reports_click", {
+      fileCount: files.length,
+    });
 
     setLoading(true);
     setErrors([]);
@@ -34,7 +39,12 @@ export default function UploadPanel({ onUploadComplete, history }) {
     setErrors(fileErrors);
 
     if (reports.length) {
-      onUploadComplete(reports);
+      await trackEvent("reports_uploaded", {
+        reportCount: reports.length,
+        fileNames: reports.map((report) => report.fileName).join(", "),
+      });
+
+      await onUploadComplete(reports);
       setMessage(`${reports.length} report(s) loaded successfully.`);
     } else {
       setMessage("No reports were loaded. Please check the file format.");
@@ -46,6 +56,8 @@ export default function UploadPanel({ onUploadComplete, history }) {
   };
 
   const loadSamples = async () => {
+    await trackEvent("load_test_files_click");
+
     setLoading(true);
     setErrors([]);
     setMessage("Loading the uploaded test Excel files from the project sample folder...");
@@ -55,7 +67,12 @@ export default function UploadPanel({ onUploadComplete, history }) {
         sampleReportFiles.map((url) => parseExcelUrl(url))
       );
 
-      onUploadComplete(reports);
+      await trackEvent("reports_uploaded", {
+        reportCount: reports.length,
+        source: "sample_reports",
+      });
+
+      await onUploadComplete(reports);
       setMessage(`${reports.length} sample report(s) loaded successfully.`);
     } catch (error) {
       setErrors([error.message]);
@@ -124,7 +141,7 @@ export default function UploadPanel({ onUploadComplete, history }) {
           ) : (
             <p>
               {message ||
-                "No reports uploaded yet. Mock data is shown until real reports are loaded."}
+                "No reports uploaded yet. Upload real Tableau reports or click Load Test Files."}
             </p>
           )}
 
@@ -144,7 +161,7 @@ export default function UploadPanel({ onUploadComplete, history }) {
             {history.length ? (
               history.map((item) => (
                 <div
-                  key={`${item.fileName}-${item.uploadedAt}`}
+                  key={item.id || `${item.fileName}-${item.uploadedAt}`}
                   className="rounded-xl bg-white p-2 border border-slate-100"
                 >
                   <p className="font-bold text-slate-800">

@@ -1,9 +1,10 @@
 // /src/App.jsx
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import UploadPanel from "./components/UploadPanel";
+import UsageStats from "./components/UsageStats";
 import LeadershipBrief from "./components/LeadershipBrief";
 import ExecutiveSummary from "./components/ExecutiveSummary";
 import KpiCards from "./components/KpiCards";
@@ -24,6 +25,8 @@ import {
   buildRedFlags,
 } from "./utils/recommendationEngine";
 import { exportSummaryPdf } from "./utils/exportUtils";
+import { getUploadHistory, saveUploadHistory } from "./utils/uploadHistoryService";
+import { trackEvent, trackPageVisit } from "./utils/tracking";
 
 export default function App() {
   const [rows, setRows] = useState([]);
@@ -31,6 +34,14 @@ export default function App() {
   const [selectedSite, setSelectedSite] = useState("All");
   const [activeSection, setActiveSection] = useState("Leadership Brief");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    trackPageVisit();
+
+    getUploadHistory()
+      .then((savedHistory) => setHistory(savedHistory))
+      .catch((error) => console.warn("Upload history load failed:", error));
+  }, []);
 
   const dashboard = useMemo(() => calculateDashboard(rows), [rows]);
 
@@ -51,23 +62,38 @@ export default function App() {
 
   const hasData = rows.length > 0;
 
-  const handleUploadComplete = (reports) => {
+  const handleUploadComplete = async (reports) => {
     const parsedRows = reports.flatMap((report) => report.rows || []);
 
     setRows(parsedRows);
-    setHistory(reports.map(({ rows: _, ...report }) => report));
     setSelectedSite("All");
     setActiveSection("Leadership Brief");
+
+    try {
+      const savedReports = await saveUploadHistory(reports);
+      setHistory((current) => [...savedReports, ...current]);
+    } catch (error) {
+      console.warn("Could not save upload history:", error);
+      setHistory((current) => [
+        ...reports.map(({ rows: _, ...report }) => report),
+        ...current,
+      ]);
+    }
   };
 
-  const resetDashboard = () => {
+  const resetDashboard = async () => {
+    await trackEvent("dashboard_reset");
     setRows([]);
-    setHistory([]);
     setSelectedSite("All");
     setActiveSection("Leadership Brief");
   };
 
-  const exportPdf = () =>
+  const exportPdf = async () => {
+    await trackEvent("export_summary_started", {
+      callCenters: dashboard.totals.callCenterCount || 0,
+      agents: dashboard.totals.agentCount || 0,
+    });
+
     exportSummaryPdf({
       summary,
       totals: dashboard.totals,
@@ -77,6 +103,7 @@ export default function App() {
       recommendations,
       history,
     });
+  };
 
   const sections = {
     "Leadership Brief": (
@@ -144,17 +171,22 @@ export default function App() {
         <main className="w-full min-w-0 space-y-5 lg:space-y-6">
           <UploadPanel onUploadComplete={handleUploadComplete} history={history} />
 
+          <UsageStats />
+
           {!hasData && (
             <section className="rounded-3xl border border-dashed border-sky-200 bg-white p-8 text-center shadow-executive">
               <p className="text-xs font-black uppercase tracking-[0.25em] text-hpBlue">
                 Waiting for reports
               </p>
-             <h2 className="mt-2 text-2xl font-black text-green-600">
-  Upload the Agent Utilization Only-Tableau Excel reports to activate the dashboard or click on "Load Test Files"
-</h2>
+
+              <h2 className="mt-2 text-2xl font-black text-green-600">
+                Upload the Tableau Excel reports to activate the dashboard or click on
+                "Load Test Files"
+              </h2>
+
               <p className="mx-auto mt-2 max-w-3xl text-sm leading-7 text-slate-500">
-                The dashboard will stay empty until real Excel files are uploaded. This prevents
-                fake demo agents from showing as real operational data.
+                The dashboard will stay empty until real Excel files are uploaded. Upload
+                history and page activity are now saved in Firebase.
               </p>
             </section>
           )}
@@ -182,6 +214,7 @@ export default function App() {
                     <p className="text-xs font-bold uppercase tracking-[0.2em] text-hpBlue">
                       Operations workspace
                     </p>
+
                     <h2 className="text-xl font-black text-hpNavy sm:text-2xl">
                       {activeSection}
                     </h2>
@@ -191,7 +224,10 @@ export default function App() {
                     {Object.keys(sections).map((section) => (
                       <button
                         key={section}
-                        onClick={() => setActiveSection(section)}
+                        onClick={async () => {
+                          await trackEvent("section_tab_click", { section });
+                          setActiveSection(section);
+                        }}
                         className={`rounded-full px-3 py-2 text-xs font-bold transition sm:text-sm ${
                           activeSection === section
                             ? "bg-hpBlue text-white shadow-md"
