@@ -150,7 +150,7 @@ export default function App() {
                 Waiting for reports
               </p>
               <h2 className="mt-2 text-2xl font-black text-hpNavy">
-                Upload the Tableau Excel reports to activate the dashboard
+                Upload the Tableau Excel reports to activate the dashboard or click on "Load Test Files"
               </h2>
               <p className="mx-auto mt-2 max-w-3xl text-sm leading-7 text-slate-500">
                 The dashboard will stay empty until real Excel files are uploaded. This prevents
