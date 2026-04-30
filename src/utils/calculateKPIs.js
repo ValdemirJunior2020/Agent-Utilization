@@ -16,7 +16,7 @@ function groupBy(rows, key) {
   }, {});
 }
 
-function validAgentName(agent) {
+function isValidAgentName(agent) {
   const value = String(agent || "").trim().toLowerCase();
 
   if (!value) return false;
@@ -25,6 +25,13 @@ function validAgentName(agent) {
   if (value.startsWith("unknown agent")) return false;
   if (value === "grand total") return false;
   if (value === "total") return false;
+  if (value === "agent") return false;
+  if (value === "agent name") return false;
+  if (value === "name") return false;
+  if (value === "user") return false;
+  if (value === "date") return false;
+  if (value === "status") return false;
+  if (value === "summary_date") return false;
 
   return true;
 }
@@ -62,19 +69,19 @@ function buildDateRange(rows) {
   };
 }
 
-function siteStatus(site) {
+function statusFor(item) {
   if (
-    site.utilization < KPI_RULES.utilizationCritical ||
-    site.breakPct > KPI_RULES.breakCritical ||
-    site.offlinePct > KPI_RULES.offlineRisk
+    item.utilization < KPI_RULES.utilizationCritical ||
+    item.breakPct > KPI_RULES.breakCritical ||
+    item.offlinePct > KPI_RULES.offlineRisk
   ) {
     return "Critical";
   }
 
   if (
-    site.utilization < KPI_RULES.utilizationReview ||
-    site.availablePct > KPI_RULES.availableRisk ||
-    site.onCallPct < KPI_RULES.onCallLoggedRisk
+    item.utilization < KPI_RULES.utilizationReview ||
+    item.availablePct > KPI_RULES.availableRisk ||
+    item.onCallPct < KPI_RULES.onCallLoggedRisk
   ) {
     return "Needs Review";
   }
@@ -83,49 +90,54 @@ function siteStatus(site) {
 }
 
 export function calculateAgentKPIs(rows) {
-  const validRows = rows.filter((row) => validAgentName(row.agent));
+  const validRows = rows.filter((row) => isValidAgentName(row.agent));
 
-  return Object.entries(groupBy(validRows, "agent")).map(([agent, agentRows]) => {
-    const dateInfo = buildDateRange(agentRows);
+  return Object.entries(groupBy(validRows, "agent"))
+    .map(([agent, agentRows]) => {
+      const dateInfo = buildDateRange(agentRows);
 
-    const onCallHours = sum(agentRows, "onCallHours");
-    const availableHours = sum(agentRows, "availableHours");
-    const breakHours = sum(agentRows, "breakHours");
-    const offlineHours = sum(agentRows, "offlineHours");
-    const loggedHours =
-      sum(agentRows, "loggedHours") ||
-      onCallHours + availableHours + breakHours + offlineHours;
+      const onCallHours = sum(agentRows, "onCallHours");
+      const availableHours = sum(agentRows, "availableHours");
+      const breakHours = sum(agentRows, "breakHours");
+      const offlineHours = sum(agentRows, "offlineHours");
+      const loggedHours =
+        sum(agentRows, "loggedHours") ||
+        onCallHours + availableHours + breakHours + offlineHours;
 
-    const item = {
-      agent,
-      callCenter: agentRows[0]?.callCenter || "Unknown",
-      rows: agentRows.length,
+      const item = {
+        agent,
+        callCenter: agentRows[0]?.callCenter || "Unknown",
+        rows: agentRows.length,
 
-      reportStartDate: dateInfo.reportStartDate,
-      reportEndDate: dateInfo.reportEndDate,
-      reportDateRange: dateInfo.reportDateRange,
-      reportDateCount: dateInfo.reportDateCount,
+        reportStartDate: dateInfo.reportStartDate,
+        reportEndDate: dateInfo.reportEndDate,
+        reportDateRange: dateInfo.reportDateRange,
+        reportDateCount: dateInfo.reportDateCount,
 
-      onCallHours,
-      availableHours,
-      breakHours,
-      offlineHours,
-      loggedHours,
-      utilization: safeDivide(onCallHours, loggedHours),
-      onCallPct: safeDivide(onCallHours, loggedHours),
-      availablePct: safeDivide(availableHours, loggedHours),
-      breakPct: safeDivide(breakHours, loggedHours),
-      offlinePct: safeDivide(offlineHours, loggedHours),
-    };
+        onCallHours,
+        availableHours,
+        breakHours,
+        offlineHours,
+        loggedHours,
 
-    item.status = siteStatus(item);
+        utilization: safeDivide(onCallHours, loggedHours),
+        onCallPct: safeDivide(onCallHours, loggedHours),
+        availablePct: safeDivide(availableHours, loggedHours),
+        breakPct: safeDivide(breakHours, loggedHours),
+        offlinePct: safeDivide(offlineHours, loggedHours),
+      };
 
-    return item;
-  });
+      item.status = statusFor(item);
+
+      return item;
+    })
+    .sort((a, b) => b.loggedHours - a.loggedHours);
 }
 
 export function calculateSiteKPIs(rows) {
-  return Object.entries(groupBy(rows, "callCenter"))
+  const validRows = rows.filter((row) => isValidAgentName(row.agent));
+
+  return Object.entries(groupBy(validRows, "callCenter"))
     .map(([callCenter, siteRows]) => {
       const dateInfo = buildDateRange(siteRows);
       const agents = calculateAgentKPIs(siteRows);
@@ -148,18 +160,22 @@ export function calculateSiteKPIs(rows) {
 
         agentCount: agents.length,
         rows: siteRows.length,
+
         onCallHours,
         availableHours,
         breakHours,
         offlineHours,
         loggedHours,
+
         utilization: safeDivide(onCallHours, loggedHours),
         onCallPct: safeDivide(onCallHours, loggedHours),
         availablePct: safeDivide(availableHours, loggedHours),
         breakPct: safeDivide(breakHours, loggedHours),
         offlinePct: safeDivide(offlineHours, loggedHours),
+
         averageOnCallPerAgent: agents.length ? onCallHours / agents.length : 0,
         averageLoggedPerAgent: agents.length ? loggedHours / agents.length : 0,
+
         zeroOnCallAgents: agents.filter((agent) => agent.onCallHours <= 0.01).length,
         belowUtilizationTarget: agents.filter(
           (agent) => agent.utilization < KPI_RULES.utilizationCritical
@@ -170,10 +186,11 @@ export function calculateSiteKPIs(rows) {
         highOfflineAgents: agents.filter(
           (agent) => agent.offlinePct > KPI_RULES.offlineRisk
         ).length,
+
         agents,
       };
 
-      site.status = siteStatus(site);
+      site.status = statusFor(site);
 
       return site;
     })
@@ -181,7 +198,9 @@ export function calculateSiteKPIs(rows) {
 }
 
 export function calculateDailyTrend(rows) {
-  const byDayAndSite = rows.reduce((acc, row) => {
+  const validRows = rows.filter((row) => isValidAgentName(row.agent));
+
+  const byDayAndSite = validRows.reduce((acc, row) => {
     const date = row.date || "Unknown Date";
     const key = `${date}|${row.callCenter}`;
 
@@ -206,15 +225,15 @@ export function calculateDailyTrend(rows) {
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
-export function calculateDashboard(rows) {
-  const validRows = rows.filter((row) => validAgentName(row.agent));
+export function calculateDashboard(rows = []) {
+  const validRows = rows.filter((row) => isValidAgentName(row.agent));
   const dateInfo = buildDateRange(validRows);
 
   const siteKPIs = calculateSiteKPIs(validRows);
   const agentKPIs = calculateAgentKPIs(validRows);
 
   const uniqueAgents = new Set(
-    validRows.map((row) => `${row.callCenter}__${row.agent}`)
+    validRows.map((row) => `${row.callCenter}__${String(row.agent).trim().toLowerCase()}`)
   );
 
   const totals = {
@@ -225,6 +244,7 @@ export function calculateDashboard(rows) {
 
     agentCount: uniqueAgents.size,
     callCenterCount: siteKPIs.length,
+
     onCallHours: sum(validRows, "onCallHours"),
     availableHours: sum(validRows, "availableHours"),
     breakHours: sum(validRows, "breakHours"),

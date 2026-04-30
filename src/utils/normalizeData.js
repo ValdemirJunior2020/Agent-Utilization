@@ -6,6 +6,7 @@ const STATUS_KEYS = {
   "talk time": "onCallHours",
   talking: "onCallHours",
   call: "onCallHours",
+  calls: "onCallHours",
 
   available: "availableHours",
   idle: "availableHours",
@@ -13,45 +14,67 @@ const STATUS_KEYS = {
 
   break: "breakHours",
   lunch: "breakHours",
+  meal: "breakHours",
 
   offline: "offlineHours",
   "not ready": "offlineHours",
   notready: "offlineHours",
   unavailable: "offlineHours",
+  training: "offlineHours",
+  meeting: "offlineHours",
+  coaching: "offlineHours",
 };
 
-function isValidValue(value) {
-  return value !== null && value !== undefined && value !== "";
+const INVALID_AGENT_VALUES = new Set([
+  "agent",
+  "agent name",
+  "name",
+  "user",
+  "status",
+  "date",
+  "day",
+  "summary_date",
+  "grand total",
+  "total",
+  "null",
+  "undefined",
+  "break",
+  "available",
+  "offline",
+  "on call",
+  "not ready",
+]);
+
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
 }
 
 function cleanText(value) {
-  return String(value || "").trim();
+  return String(value ?? "").trim();
 }
 
 function normalizeText(value) {
   return cleanText(value).toLowerCase().replace(/\s+/g, " ");
 }
 
-function isKnownStatus(value) {
-  const text = normalizeText(value);
-  return Boolean(STATUS_KEYS[text]);
-}
+function toNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
 
-function statusToKey(value) {
-  const text = normalizeText(value);
-  return STATUS_KEYS[text] || null;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/,/g, "").replace("%", "").trim();
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
 }
 
 function looksLikeDate(value) {
-  if (!isValidValue(value)) return false;
+  if (!hasValue(value)) return false;
 
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return true;
-  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return true;
 
   const text = cleanText(value);
-
-  if (!text) return false;
 
   if (
     /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(
@@ -61,27 +84,20 @@ function looksLikeDate(value) {
     return true;
   }
 
-  if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(text)) {
-    return true;
-  }
-
-  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text)) {
-    return true;
-  }
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text)) return true;
+  if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(text)) return true;
 
   return false;
 }
 
 function formatDate(value) {
-  if (!isValidValue(value)) return "";
+  if (!hasValue(value)) return "";
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
   }
 
   const text = cleanText(value);
-
-  if (!text) return "";
 
   const parsed = new Date(text);
 
@@ -92,62 +108,120 @@ function formatDate(value) {
   return text;
 }
 
+function getStatusKey(value) {
+  const text = normalizeText(value);
+
+  if (STATUS_KEYS[text]) return STATUS_KEYS[text];
+
+  if (text.includes("on call")) return "onCallHours";
+  if (text.includes("talk")) return "onCallHours";
+  if (text.includes("available")) return "availableHours";
+  if (text.includes("idle")) return "availableHours";
+  if (text.includes("break")) return "breakHours";
+  if (text.includes("lunch")) return "breakHours";
+  if (text.includes("offline")) return "offlineHours";
+  if (text.includes("not ready")) return "offlineHours";
+  if (text.includes("training")) return "offlineHours";
+  if (text.includes("meeting")) return "offlineHours";
+  if (text.includes("coaching")) return "offlineHours";
+
+  return null;
+}
+
 function isAgentValue(value) {
   const text = cleanText(value);
+  const normalized = normalizeText(value);
 
   if (!text) return false;
-  if (isKnownStatus(text)) return false;
-  if (looksLikeDate(text)) return false;
-  if (normalizeText(text) === "grand total") return false;
-  if (normalizeText(text) === "summary_date") return false;
+  if (INVALID_AGENT_VALUES.has(normalized)) return false;
+  if (looksLikeDate(value)) return false;
+  if (getStatusKey(value)) return false;
+  if (/^\d+$/.test(text) && text.length < 4) return false;
 
   return true;
 }
 
-function toNumber(value) {
-  if (typeof value === "number") return value;
+function findGrandTotalIndex(rawMatrix) {
+  for (const row of rawMatrix) {
+    if (!Array.isArray(row)) continue;
 
-  if (typeof value === "string") {
-    const cleaned = value.replace(/,/g, "").replace("%", "").trim();
-    const parsed = Number(cleaned);
-
-    return Number.isFinite(parsed) ? parsed : 0;
+    for (let index = 0; index < row.length; index += 1) {
+      if (normalizeText(row[index]) === "grand total") {
+        return index;
+      }
+    }
   }
 
-  return 0;
+  return -1;
 }
 
-function convertTableauMinutesToHours(value) {
-  const number = toNumber(value);
+function findStatusIndex(row) {
+  const searchLimit = Math.min(row.length, 10);
 
-  if (!Number.isFinite(number) || number <= 0) return 0;
+  for (let index = 0; index < searchLimit; index += 1) {
+    if (getStatusKey(row[index])) {
+      return index;
+    }
+  }
 
-  return number / 60;
+  return -1;
 }
 
-function sumDurationCells(row, startIndex = 3) {
-  let total = 0;
+function findDateBeforeStatus(row, statusIndex) {
+  const end = statusIndex >= 0 ? statusIndex : Math.min(row.length, 6);
 
-  for (let index = startIndex; index < row.length; index += 1) {
+  for (let index = 0; index < end; index += 1) {
+    if (looksLikeDate(row[index])) {
+      return formatDate(row[index]);
+    }
+  }
+
+  return "";
+}
+
+function findAgentBeforeStatus(row, statusIndex) {
+  const end = statusIndex >= 0 ? statusIndex : Math.min(row.length, 6);
+
+  for (let index = 0; index < end; index += 1) {
     const value = row[index];
 
-    if (!isValidValue(value)) continue;
-
-    const text = normalizeText(value);
-
-    if (
-      text === "grand total" ||
-      text === "summary_date" ||
-      text === "total" ||
-      text === "null"
-    ) {
-      continue;
+    if (isAgentValue(value)) {
+      return cleanText(value);
     }
-
-    total += toNumber(value);
   }
 
-  return convertTableauMinutesToHours(total);
+  return "";
+}
+
+function tableauMinutesToHours(value) {
+  const minutes = toNumber(value);
+
+  if (!Number.isFinite(minutes) || minutes <= 0) return 0;
+
+  return minutes / 60;
+}
+
+function getHoursFromRow(row, statusIndex, grandTotalIndex) {
+  if (
+    grandTotalIndex >= 0 &&
+    grandTotalIndex < row.length &&
+    toNumber(row[grandTotalIndex]) > 0
+  ) {
+    return tableauMinutesToHours(row[grandTotalIndex]);
+  }
+
+  let totalMinutes = 0;
+
+  for (let index = statusIndex + 1; index < row.length; index += 1) {
+    const value = row[index];
+
+    if (!hasValue(value)) continue;
+    if (normalizeText(value) === "grand total") continue;
+
+    totalMinutes += toNumber(value);
+  }
+
+  return tableauMinutesToHours(totalMinutes);
 }
 
 export function detectCallCenter(fileName = "") {
@@ -159,10 +233,12 @@ export function detectCallCenter(fileName = "") {
   if (name.includes("concentrix")) return "Concentrix";
   if (name.includes("buwelo")) return "Buwelo";
 
-  return fileName
-    .replace(/\.(xlsx|xls|csv)$/i, "")
-    .replace(/service|utilization|report/gi, "")
-    .trim() || "Unknown";
+  return (
+    fileName
+      .replace(/\.(xlsx|xls|csv)$/i, "")
+      .replace(/service|utilization|report/gi, "")
+      .trim() || "Unknown"
+  );
 }
 
 export function detectReportDates(rows = [], rawMatrix = []) {
@@ -181,6 +257,7 @@ export function detectReportDates(rows = [], rawMatrix = []) {
 
 export function normalizeRows(rawMatrix = [], fileName = "") {
   const callCenter = detectCallCenter(fileName);
+  const grandTotalIndex = findGrandTotalIndex(rawMatrix);
   const normalizedRows = [];
 
   let currentDate = "";
@@ -189,30 +266,37 @@ export function normalizeRows(rawMatrix = [], fileName = "") {
   rawMatrix.forEach((row, rowIndex) => {
     if (!Array.isArray(row)) return;
 
-    const firstCell = row[0];
-    const secondCell = row[1];
-    const thirdCell = row[2];
+    const statusIndex = findStatusIndex(row);
 
-    if (looksLikeDate(firstCell)) {
-      currentDate = formatDate(firstCell);
+    if (statusIndex === -1) {
+      const dateFromHeaderRow = findDateBeforeStatus(row, -1);
+      const agentFromHeaderRow = findAgentBeforeStatus(row, -1);
+
+      if (dateFromHeaderRow) currentDate = dateFromHeaderRow;
+      if (agentFromHeaderRow) currentAgent = agentFromHeaderRow;
+
+      return;
     }
 
-    if (isAgentValue(secondCell)) {
-      currentAgent = cleanText(secondCell);
-    }
+    const dateFromRow = findDateBeforeStatus(row, statusIndex);
+    const agentFromRow = findAgentBeforeStatus(row, statusIndex);
 
-    const status = cleanText(thirdCell);
-    const statusKey = statusToKey(status);
+    if (dateFromRow) currentDate = dateFromRow;
+    if (agentFromRow) currentAgent = agentFromRow;
+
+    if (!currentAgent || !isAgentValue(currentAgent)) return;
+
+    const status = cleanText(row[statusIndex]);
+    const statusKey = getStatusKey(status);
 
     if (!statusKey) return;
-    if (!currentAgent) return;
 
-    const hours = sumDurationCells(row, 3);
+    const hours = getHoursFromRow(row, statusIndex, grandTotalIndex);
 
     if (hours <= 0) return;
 
     const normalized = {
-      id: `${callCenter}-${currentDate}-${currentAgent}-${status}-${rowIndex}`,
+      id: `${callCenter}-${currentDate || "Unknown Date"}-${currentAgent}-${status}-${rowIndex}`,
       fileName,
       callCenter,
       date: currentDate || "Unknown Date",
