@@ -1,0 +1,42 @@
+/* /src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #071A2D;
+  background: #F4F7FB;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #F4F7FB;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #CBD5E1;
+  }
+
+  body {
+    background: #fff;
+  }
+}
