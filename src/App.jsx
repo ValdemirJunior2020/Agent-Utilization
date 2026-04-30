@@ -149,9 +149,9 @@ export default function App() {
               <p className="text-xs font-black uppercase tracking-[0.25em] text-hpBlue">
                 Waiting for reports
               </p>
-              <h2 className="mt-2 text-2xl font-black text-hpNavy">
-                Upload the Tableau Excel reports to activate the dashboard or click on "Load Test Files"
-              </h2>
+             <h2 className="mt-2 text-2xl font-black text-red-600">
+  Upload the Tableau Excel reports to activate the dashboard or click on "Load Test Files"
+</h2>
               <p className="mx-auto mt-2 max-w-3xl text-sm leading-7 text-slate-500">
                 The dashboard will stay empty until real Excel files are uploaded. This prevents
                 fake demo agents from showing as real operational data.
