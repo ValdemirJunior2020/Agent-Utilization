@@ -1,4 +1,4 @@
-// src/utils/calculateKPIs.js
+// /src/utils/calculateKPIs.js
 
 import { KPI_RULES } from "../data/kpiRules";
 import { safeDivide } from "./formatters";
@@ -14,6 +14,19 @@ function groupBy(rows, key) {
     acc[group].push(row);
     return acc;
   }, {});
+}
+
+function validAgentName(agent) {
+  const value = String(agent || "").trim().toLowerCase();
+
+  if (!value) return false;
+  if (value === "unknown") return false;
+  if (value === "unknown agent") return false;
+  if (value.startsWith("unknown agent")) return false;
+  if (value === "grand total") return false;
+  if (value === "total") return false;
+
+  return true;
 }
 
 function cleanDates(rows) {
@@ -70,7 +83,9 @@ function siteStatus(site) {
 }
 
 export function calculateAgentKPIs(rows) {
-  return Object.entries(groupBy(rows, "agent")).map(([agent, agentRows]) => {
+  const validRows = rows.filter((row) => validAgentName(row.agent));
+
+  return Object.entries(groupBy(validRows, "agent")).map(([agent, agentRows]) => {
     const dateInfo = buildDateRange(agentRows);
 
     const onCallHours = sum(agentRows, "onCallHours");
@@ -80,8 +95,6 @@ export function calculateAgentKPIs(rows) {
     const loggedHours =
       sum(agentRows, "loggedHours") ||
       onCallHours + availableHours + breakHours + offlineHours;
-
-    const utilization = safeDivide(onCallHours, loggedHours);
 
     const item = {
       agent,
@@ -98,7 +111,7 @@ export function calculateAgentKPIs(rows) {
       breakHours,
       offlineHours,
       loggedHours,
-      utilization,
+      utilization: safeDivide(onCallHours, loggedHours),
       onCallPct: safeDivide(onCallHours, loggedHours),
       availablePct: safeDivide(availableHours, loggedHours),
       breakPct: safeDivide(breakHours, loggedHours),
@@ -133,7 +146,7 @@ export function calculateSiteKPIs(rows) {
         reportDateRange: dateInfo.reportDateRange,
         reportDateCount: dateInfo.reportDateCount,
 
-        agentCount: new Set(siteRows.map((row) => row.agent)).size,
+        agentCount: agents.length,
         rows: siteRows.length,
         onCallHours,
         availableHours,
@@ -194,10 +207,15 @@ export function calculateDailyTrend(rows) {
 }
 
 export function calculateDashboard(rows) {
-  const dateInfo = buildDateRange(rows);
+  const validRows = rows.filter((row) => validAgentName(row.agent));
+  const dateInfo = buildDateRange(validRows);
 
-  const siteKPIs = calculateSiteKPIs(rows);
-  const agentKPIs = calculateAgentKPIs(rows);
+  const siteKPIs = calculateSiteKPIs(validRows);
+  const agentKPIs = calculateAgentKPIs(validRows);
+
+  const uniqueAgents = new Set(
+    validRows.map((row) => `${row.callCenter}__${row.agent}`)
+  );
 
   const totals = {
     reportStartDate: dateInfo.reportStartDate,
@@ -205,13 +223,13 @@ export function calculateDashboard(rows) {
     reportDateRange: dateInfo.reportDateRange,
     reportDateCount: dateInfo.reportDateCount,
 
-    agentCount: new Set(rows.map((row) => `${row.callCenter}-${row.agent}`)).size,
+    agentCount: uniqueAgents.size,
     callCenterCount: siteKPIs.length,
-    onCallHours: sum(rows, "onCallHours"),
-    availableHours: sum(rows, "availableHours"),
-    breakHours: sum(rows, "breakHours"),
-    offlineHours: sum(rows, "offlineHours"),
-    loggedHours: sum(rows, "loggedHours"),
+    onCallHours: sum(validRows, "onCallHours"),
+    availableHours: sum(validRows, "availableHours"),
+    breakHours: sum(validRows, "breakHours"),
+    offlineHours: sum(validRows, "offlineHours"),
+    loggedHours: sum(validRows, "loggedHours"),
   };
 
   totals.utilization = safeDivide(totals.onCallHours, totals.loggedHours);
@@ -224,6 +242,6 @@ export function calculateDashboard(rows) {
     totals,
     siteKPIs,
     agentKPIs,
-    dailyTrend: calculateDailyTrend(rows),
+    dailyTrend: calculateDailyTrend(validRows),
   };
 }
