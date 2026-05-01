@@ -180,7 +180,7 @@ export default function App() {
               </p>
 
               <h2 className="mt-2 text-2xl font-black text-green-600">
-                Upload the Tableau Excel reports to activate the dashboard or click on
+                Upload the Agent Utilization Tableau Excel reports to activate the dashboard or click on
                 "Load Test Files"
               </h2>
 
