@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import UploadPanel from "./components/UploadPanel";
+import ScheduleUploadPanel from "./components/ScheduleUploadPanel";
 import UsageStats from "./components/UsageStats";
 import LeadershipBrief from "./components/LeadershipBrief";
+import BillableHoursAnalysis from "./components/BillableHoursAnalysis";
 import ExecutiveSummary from "./components/ExecutiveSummary";
 import KpiCards from "./components/KpiCards";
 import SiteComparisonTable from "./components/SiteComparisonTable";
@@ -27,13 +29,17 @@ import {
 import { exportSummaryPdf } from "./utils/exportUtils";
 import { getUploadHistory, saveUploadHistory } from "./utils/uploadHistoryService";
 import { trackEvent, trackPageVisit } from "./utils/tracking";
+import { loadSavedScheduleReports } from "./utils/savedScheduleLoader";
 
 export default function App() {
   const [rows, setRows] = useState([]);
   const [history, setHistory] = useState([]);
+  const [scheduleReports, setScheduleReports] = useState([]);
+  const [scheduleHistory, setScheduleHistory] = useState([]);
   const [selectedSite, setSelectedSite] = useState("All");
-  const [activeSection, setActiveSection] = useState("Leadership Brief");
+  const [activeSection, setActiveSection] = useState("Billable Hours");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [scheduleLoadMessage, setScheduleLoadMessage] = useState("");
 
   useEffect(() => {
     trackPageVisit();
@@ -41,6 +47,26 @@ export default function App() {
     getUploadHistory()
       .then((savedHistory) => setHistory(savedHistory))
       .catch((error) => console.warn("Upload history load failed:", error));
+
+    loadSavedScheduleReports()
+      .then(({ reports, errors }) => {
+        if (reports.length) {
+          setScheduleReports(reports);
+          setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
+          setScheduleLoadMessage(
+            `${reports.length} saved schedule file(s) auto-loaded.`
+          );
+        }
+
+        if (errors.length) {
+          console.warn("Saved schedule load errors:", errors);
+          setScheduleLoadMessage(errors.join(" | "));
+        }
+      })
+      .catch((error) => {
+        console.warn("Saved schedules failed:", error);
+        setScheduleLoadMessage(error.message);
+      });
   }, []);
 
   const dashboard = useMemo(() => calculateDashboard(rows), [rows]);
@@ -60,14 +86,21 @@ export default function App() {
     [dashboard.siteKPIs, dashboard.totals, redFlags]
   );
 
-  const hasData = rows.length > 0;
+  const hasUtilizationData = rows.length > 0;
+  const hasScheduleData = scheduleReports.length > 0;
 
   const handleUploadComplete = async (reports) => {
     const parsedRows = reports.flatMap((report) => report.rows || []);
 
     setRows(parsedRows);
     setSelectedSite("All");
-    setActiveSection("Leadership Brief");
+    setActiveSection("Billable Hours");
+
+    setTimeout(() => {
+      document
+        .getElementById("active-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
 
     try {
       const savedReports = await saveUploadHistory(reports);
@@ -81,11 +114,47 @@ export default function App() {
     }
   };
 
+  const handleScheduleUploadComplete = async (reports) => {
+    setScheduleReports(reports);
+    setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
+    setActiveSection("Billable Hours");
+    setScheduleLoadMessage(`${reports.length} schedule file(s) loaded.`);
+
+    setTimeout(() => {
+      document
+        .getElementById("active-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  };
+
+  const reloadSavedSchedules = async () => {
+    await trackEvent("reload_saved_schedules_auto_button");
+
+    const { reports, errors } = await loadSavedScheduleReports();
+
+    if (reports.length) {
+      setScheduleReports(reports);
+      setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
+      setActiveSection("Billable Hours");
+      setScheduleLoadMessage(`${reports.length} saved schedule file(s) loaded.`);
+    }
+
+    if (errors.length) {
+      console.warn("Saved schedule load errors:", errors);
+      setScheduleLoadMessage(errors.join(" | "));
+    }
+  };
+
   const resetDashboard = async () => {
     await trackEvent("dashboard_reset");
     setRows([]);
     setSelectedSite("All");
-    setActiveSection("Leadership Brief");
+    setActiveSection("Billable Hours");
+
+    const { reports } = await loadSavedScheduleReports();
+
+    setScheduleReports(reports);
+    setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
   };
 
   const exportPdf = async () => {
@@ -114,6 +183,13 @@ export default function App() {
         recommendations={recommendations}
         history={history}
         rows={rows}
+      />
+    ),
+
+    "Billable Hours": (
+      <BillableHoursAnalysis
+        utilizationRows={rows}
+        scheduleReports={scheduleReports}
       />
     ),
 
@@ -171,27 +247,44 @@ export default function App() {
         <main className="w-full min-w-0 space-y-5 lg:space-y-6">
           <UploadPanel onUploadComplete={handleUploadComplete} history={history} />
 
+          <ScheduleUploadPanel
+            onScheduleUploadComplete={handleScheduleUploadComplete}
+            scheduleHistory={scheduleHistory}
+          />
+
+          {scheduleLoadMessage && (
+            <section className="rounded-3xl border border-green-100 bg-green-50 p-4 text-sm font-bold text-green-800 shadow-sm">
+              {scheduleLoadMessage}
+              <button
+                onClick={reloadSavedSchedules}
+                className="ml-3 rounded-xl bg-green-700 px-3 py-1 text-xs font-black text-white hover:bg-green-800"
+              >
+                Reload Saved Schedules
+              </button>
+            </section>
+          )}
+
           <UsageStats />
 
-          {!hasData && (
+          {!hasUtilizationData && (
             <section className="rounded-3xl border border-dashed border-sky-200 bg-white p-8 text-center shadow-executive">
               <p className="text-xs font-black uppercase tracking-[0.25em] text-hpBlue">
                 Waiting for reports
               </p>
 
               <h2 className="mt-2 text-2xl font-black text-green-600">
-                Upload the Agent Utilization Tableau Excel reports to activate the dashboard or click on
+                Upload the Tableau Excel reports to activate the dashboard or click on
                 "Load Test Files"
               </h2>
 
               <p className="mx-auto mt-2 max-w-3xl text-sm leading-7 text-slate-500">
-                The dashboard will stay empty until real Excel files are uploaded. Upload
-                history and page activity are now saved in Firebase.
+                Saved schedules are loaded automatically. The full Billable Hours comparison
+                needs both utilization reports and schedule files.
               </p>
             </section>
           )}
 
-          {hasData && (
+          {hasUtilizationData && (
             <>
               <KpiCards totals={dashboard.totals} redFlags={redFlags} />
 
@@ -204,45 +297,47 @@ export default function App() {
                 />
                 <AgentRankingChart agentKPIs={dashboard.agentKPIs} />
               </section>
+            </>
+          )}
 
-              <section
-                id="active-section"
-                className="print-card overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-executive"
-              >
-                <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-hpBlue">
-                      Operations workspace
-                    </p>
+          {(hasUtilizationData || hasScheduleData || activeSection === "Billable Hours") && (
+            <section
+              id="active-section"
+              className="print-card overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-executive"
+            >
+              <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-hpBlue">
+                    Operations workspace
+                  </p>
 
-                    <h2 className="text-xl font-black text-hpNavy sm:text-2xl">
-                      {activeSection}
-                    </h2>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {Object.keys(sections).map((section) => (
-                      <button
-                        key={section}
-                        onClick={async () => {
-                          await trackEvent("section_tab_click", { section });
-                          setActiveSection(section);
-                        }}
-                        className={`rounded-full px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                          activeSection === section
-                            ? "bg-hpBlue text-white shadow-md"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {section}
-                      </button>
-                    ))}
-                  </div>
+                  <h2 className="text-xl font-black text-hpNavy sm:text-2xl">
+                    {activeSection}
+                  </h2>
                 </div>
 
-                <div className="p-4 sm:p-6">{sections[activeSection]}</div>
-              </section>
-            </>
+                <div className="flex flex-wrap gap-2">
+                  {Object.keys(sections).map((section) => (
+                    <button
+                      key={section}
+                      onClick={async () => {
+                        await trackEvent("section_tab_click", { section });
+                        setActiveSection(section);
+                      }}
+                      className={`rounded-full px-3 py-2 text-xs font-bold transition sm:text-sm ${
+                        activeSection === section
+                          ? "bg-hpBlue text-white shadow-md"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {section}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6">{sections[activeSection]}</div>
+            </section>
           )}
         </main>
       </div>

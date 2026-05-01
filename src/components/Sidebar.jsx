@@ -3,6 +3,7 @@
 import {
   BarChart3,
   BriefcaseBusiness,
+  CalendarClock,
   ClipboardList,
   Gauge,
   Lightbulb,
@@ -14,6 +15,7 @@ import {
 
 const items = [
   { label: "Leadership Brief", icon: BriefcaseBusiness },
+  { label: "Billable Hours", icon: CalendarClock },
   { label: "Executive Summary", icon: ClipboardList },
   { label: "Site Comparison", icon: BarChart3 },
   { label: "Agent Utilization", icon: Users },
@@ -63,17 +65,16 @@ function SidebarContent({ activeSection, setActiveSection, onClose }) {
         </p>
 
         <p className="mt-2 text-sm leading-6">
-          Review utilization by paid-time productivity, not just activity. High AUX exposure
-          can hide staffing and adherence problems.
+          Use billable hours as the denominator. Phone time alone is only the numerator.
         </p>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 p-4">
-        <p className="text-xs font-black uppercase tracking-widest text-hpBlue">
-          Executive Question
+      <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4">
+        <p className="text-xs font-black uppercase tracking-widest text-green-700">
+          New Equation
         </p>
         <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
-          How much paid time is actually converting into customer handling time?
+          Phone Utilization = Phone Hours ÷ Billable Hours
         </p>
       </div>
     </div>
