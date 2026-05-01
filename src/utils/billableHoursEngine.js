@@ -17,12 +17,81 @@ function safeDivide(numerator, denominator) {
   return (top / bottom) * 100;
 }
 
+function normalizeAgentName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+function buildCoverageAudit({ scheduleRows, utilizationRows }) {
+  const scheduledAgents = unique(
+    scheduleRows.map((row) => row.agentName || row.employeeId)
+  );
+
+  const utilizationAgents = unique(utilizationRows.map((row) => row.agent));
+
+  const normalizedUtilAgents = new Set(
+    utilizationAgents.map((agent) => normalizeAgentName(agent))
+  );
+
+  const missingScheduledAgents = scheduledAgents.filter((agent) => {
+    const normalized = normalizeAgentName(agent);
+    return normalized && !normalizedUtilAgents.has(normalized);
+  });
+
+  const normalizedScheduleAgents = new Set(
+    scheduledAgents.map((agent) => normalizeAgentName(agent))
+  );
+
+  const extraUtilizationAgents = utilizationAgents.filter((agent) => {
+    const normalized = normalizeAgentName(agent);
+    return normalized && !normalizedScheduleAgents.has(normalized);
+  });
+
+  const matchedAgentCount = Math.max(
+    Math.min(scheduledAgents.length, utilizationAgents.length) -
+      missingScheduledAgents.length,
+    0
+  );
+
+  const matchRate = safeDivide(matchedAgentCount, scheduledAgents.length);
+
+  return {
+    scheduledAgents,
+    utilizationAgents,
+    scheduledAgentCount: scheduledAgents.length,
+    utilizationAgentCount: utilizationAgents.length,
+    matchedAgentCount,
+    missingScheduledAgents,
+    extraUtilizationAgents,
+    missingScheduledAgentCount: missingScheduledAgents.length,
+    extraUtilizationAgentCount: extraUtilizationAgents.length,
+    matchRate,
+  };
+}
+
 function statusFor(row) {
   if (!row.hasSchedule) return "No Schedule";
   if (!row.hasUtilization) return "No Utilization";
-  if (row.phoneUtilization < 35) return "Critical";
-  if (row.phoneUtilization < 50) return "Needs Review";
-  if (row.scheduleAdherence < 70) return "Needs Review";
+  if (row.overlapDateCount <= 0) return "No Overlap";
+
+  if (
+    row.missingScheduledAgentCount > 0 ||
+    row.matchRate < 80 ||
+    row.utilizationAgentCount === 0
+  ) {
+    return "Data Coverage / Accuracy Risk";
+  }
+
+  if (row.phoneUtilization < 35 || row.scheduleAdherence < 70) {
+    return "Needs Validation";
+  }
+
+  if (row.phoneUtilization < 50 || row.scheduleAdherence < 90) {
+    return "Needs Review";
+  }
+
   return "Healthy";
 }
 
@@ -31,9 +100,7 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
     scheduleRows.map((row) => row.scheduleDateEastern)
   ).sort();
 
-  const utilizationDates = unique(
-    utilizationRows.map((row) => row.date)
-  ).sort();
+  const utilizationDates = unique(utilizationRows.map((row) => row.date)).sort();
 
   const overlapDates = scheduleDates.filter((date) =>
     utilizationDates.includes(date)
@@ -54,13 +121,12 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
   const breakHours = sum(overlapUtilizationRows, "breakHours");
   const offlineHours = sum(overlapUtilizationRows, "offlineHours");
 
-  const scheduleAgents = unique(
-    scheduleRows.map((row) => row.employeeId || row.agentName)
-  );
-
-  const utilizationAgents = unique(
-    utilizationRows.map((row) => row.agent)
-  );
+  const coverageAudit = buildCoverageAudit({
+    scheduleRows: overlapScheduleRows.length ? overlapScheduleRows : scheduleRows,
+    utilizationRows: overlapUtilizationRows.length
+      ? overlapUtilizationRows
+      : utilizationRows,
+  });
 
   const result = {
     callCenter,
@@ -72,7 +138,9 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
 
     utilizationDateRange:
       utilizationDates.length > 1
-        ? `${utilizationDates[0]} to ${utilizationDates[utilizationDates.length - 1]}`
+        ? `${utilizationDates[0]} to ${
+            utilizationDates[utilizationDates.length - 1]
+          }`
         : utilizationDates[0] || "No utilization",
 
     overlapDateRange:
@@ -82,8 +150,14 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
 
     overlapDateCount: overlapDates.length,
 
-    scheduleAgentCount: scheduleAgents.length,
-    utilizationAgentCount: utilizationAgents.length,
+    scheduleAgentCount: coverageAudit.scheduledAgentCount,
+    utilizationAgentCount: coverageAudit.utilizationAgentCount,
+    matchedAgentCount: coverageAudit.matchedAgentCount,
+    missingScheduledAgentCount: coverageAudit.missingScheduledAgentCount,
+    extraUtilizationAgentCount: coverageAudit.extraUtilizationAgentCount,
+    missingScheduledAgents: coverageAudit.missingScheduledAgents,
+    extraUtilizationAgents: coverageAudit.extraUtilizationAgents,
+    matchRate: coverageAudit.matchRate,
 
     billableHours,
     phoneHours,
@@ -103,6 +177,9 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
 
     hasSchedule: scheduleRows.length > 0,
     hasUtilization: utilizationRows.length > 0,
+
+    hourlyBucketDistortionRisk: true,
+    requiresManualValidation: true,
   };
 
   result.status = statusFor(result);
@@ -110,7 +187,10 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
   return result;
 }
 
-export function calculateBillableAnalysis({ utilizationRows = [], scheduleReports = [] }) {
+export function calculateBillableAnalysis({
+  utilizationRows = [],
+  scheduleReports = [],
+}) {
   const scheduleRows = scheduleReports.flatMap((report) => report.rows || []);
 
   const callCenters = unique([
@@ -121,26 +201,23 @@ export function calculateBillableAnalysis({ utilizationRows = [], scheduleReport
   const siteRows = callCenters.map((callCenter) =>
     buildSiteBillableRow({
       callCenter,
-      utilizationRows: utilizationRows.filter((row) => row.callCenter === callCenter),
+      utilizationRows: utilizationRows.filter(
+        (row) => row.callCenter === callCenter
+      ),
       scheduleRows: scheduleRows.filter((row) => row.callCenter === callCenter),
     })
   );
 
   const totals = {
     callCenterCount: siteRows.length,
-    overlapDateCount: unique(
-      siteRows.flatMap((row) =>
-        row.overlapDateRange && row.overlapDateRange !== "No overlap"
-          ? row.overlapDateRange.split(" to ")
-          : []
-      )
-    ).length,
     billableHours: sum(siteRows, "billableHours"),
     phoneHours: sum(siteRows, "phoneHours"),
     loggedHours: sum(siteRows, "loggedHours"),
     availableHours: sum(siteRows, "availableHours"),
     breakHours: sum(siteRows, "breakHours"),
     offlineHours: sum(siteRows, "offlineHours"),
+    missingScheduledAgentCount: sum(siteRows, "missingScheduledAgentCount"),
+    extraUtilizationAgentCount: sum(siteRows, "extraUtilizationAgentCount"),
   };
 
   totals.nonPhoneBillableHours = Math.max(

@@ -48,26 +48,30 @@ export default function App() {
       .then((savedHistory) => setHistory(savedHistory))
       .catch((error) => console.warn("Upload history load failed:", error));
 
-    loadSavedScheduleReports()
-      .then(({ reports, errors }) => {
-        if (reports.length) {
-          setScheduleReports(reports);
-          setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
-          setScheduleLoadMessage(
-            `${reports.length} saved schedule file(s) auto-loaded.`
-          );
-        }
-
-        if (errors.length) {
-          console.warn("Saved schedule load errors:", errors);
-          setScheduleLoadMessage(errors.join(" | "));
-        }
-      })
-      .catch((error) => {
-        console.warn("Saved schedules failed:", error);
-        setScheduleLoadMessage(error.message);
-      });
+    loadSavedSchedulesOnStart();
   }, []);
+
+  const loadSavedSchedulesOnStart = async () => {
+    try {
+      const { reports, errors } = await loadSavedScheduleReports();
+
+      if (reports.length) {
+        setScheduleReports(reports);
+        setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
+        setScheduleLoadMessage(
+          `${reports.length} saved schedule file(s) loaded automatically.`
+        );
+      }
+
+      if (errors.length) {
+        console.warn("Saved schedule load errors:", errors);
+        setScheduleLoadMessage(errors.join(" | "));
+      }
+    } catch (error) {
+      console.warn("Saved schedules failed:", error);
+      setScheduleLoadMessage(error.message);
+    }
+  };
 
   const dashboard = useMemo(() => calculateDashboard(rows), [rows]);
 
@@ -127,34 +131,32 @@ export default function App() {
     }, 150);
   };
 
-  const reloadSavedSchedules = async () => {
-    await trackEvent("reload_saved_schedules_auto_button");
-
-    const { reports, errors } = await loadSavedScheduleReports();
-
-    if (reports.length) {
-      setScheduleReports(reports);
-      setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
-      setActiveSection("Billable Hours");
-      setScheduleLoadMessage(`${reports.length} saved schedule file(s) loaded.`);
-    }
-
-    if (errors.length) {
-      console.warn("Saved schedule load errors:", errors);
-      setScheduleLoadMessage(errors.join(" | "));
-    }
-  };
-
   const resetDashboard = async () => {
     await trackEvent("dashboard_reset");
+
     setRows([]);
     setSelectedSite("All");
     setActiveSection("Billable Hours");
 
-    const { reports } = await loadSavedScheduleReports();
+    try {
+      const { reports, errors } = await loadSavedScheduleReports();
 
-    setScheduleReports(reports);
-    setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
+      setScheduleReports(reports);
+      setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
+
+      if (reports.length) {
+        setScheduleLoadMessage(
+          `${reports.length} saved schedule file(s) reloaded automatically.`
+        );
+      }
+
+      if (errors.length) {
+        setScheduleLoadMessage(errors.join(" | "));
+      }
+    } catch (error) {
+      console.warn("Saved schedules reload failed:", error);
+      setScheduleLoadMessage(error.message);
+    }
   };
 
   const exportPdf = async () => {
@@ -255,12 +257,6 @@ export default function App() {
           {scheduleLoadMessage && (
             <section className="rounded-3xl border border-green-100 bg-green-50 p-4 text-sm font-bold text-green-800 shadow-sm">
               {scheduleLoadMessage}
-              <button
-                onClick={reloadSavedSchedules}
-                className="ml-3 rounded-xl bg-green-700 px-3 py-1 text-xs font-black text-white hover:bg-green-800"
-              >
-                Reload Saved Schedules
-              </button>
             </section>
           )}
 
@@ -278,8 +274,8 @@ export default function App() {
               </h2>
 
               <p className="mx-auto mt-2 max-w-3xl text-sm leading-7 text-slate-500">
-                Saved schedules are loaded automatically. The full Billable Hours comparison
-                needs both utilization reports and schedule files.
+                Saved schedules are loaded automatically. The full Billable Hours
+                comparison needs both utilization reports and schedule files.
               </p>
             </section>
           )}
