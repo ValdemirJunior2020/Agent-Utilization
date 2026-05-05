@@ -1,4 +1,4 @@
-// /src/utils/billableHoursEngine.js
+// src/utils/billableHoursEngine.js
 
 function sum(rows, key) {
   return rows.reduce((total, row) => total + Number(row[key] || 0), 0);
@@ -17,36 +17,64 @@ function safeDivide(numerator, denominator) {
   return (top / bottom) * 100;
 }
 
-function normalizeAgentName(value) {
+function normalizeAgentKey(value) {
   return String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .trim();
 }
 
+function getScheduleAgentLabel(row) {
+  if (row.employeeId && row.agentName) {
+    return `${row.agentName} (${row.employeeId})`;
+  }
+
+  return row.agentName || row.employeeId || "";
+}
+
 function buildCoverageAudit({ scheduleRows, utilizationRows }) {
   const scheduledAgents = unique(
-    scheduleRows.map((row) => row.agentName || row.employeeId)
+    scheduleRows.map((row) => getScheduleAgentLabel(row))
   );
 
-  const utilizationAgents = unique(utilizationRows.map((row) => row.agent));
-
-  const normalizedUtilAgents = new Set(
-    utilizationAgents.map((agent) => normalizeAgentName(agent))
+  const scheduledAgentKeys = unique(
+    scheduleRows.flatMap((row) => [
+      normalizeAgentKey(row.agentName),
+      normalizeAgentKey(row.employeeId),
+      normalizeAgentKey(`${row.agentName}${row.employeeId}`),
+    ])
   );
 
-  const missingScheduledAgents = scheduledAgents.filter((agent) => {
-    const normalized = normalizeAgentName(agent);
-    return normalized && !normalizedUtilAgents.has(normalized);
+  const utilizationAgents = unique(
+    utilizationRows.map((row) => row.agent || row.agentName || row.employeeId)
+  );
+
+  const utilizationAgentKeys = unique(
+    utilizationRows.flatMap((row) => [
+      normalizeAgentKey(row.agent),
+      normalizeAgentKey(row.agentName),
+      normalizeAgentKey(row.employeeId),
+    ])
+  );
+
+  const utilizationKeySet = new Set(utilizationAgentKeys);
+  const scheduleKeySet = new Set(scheduledAgentKeys);
+
+  const missingScheduledAgents = scheduledAgents.filter((agentLabel) => {
+    const normalized = normalizeAgentKey(agentLabel);
+    const nameOnly = normalizeAgentKey(agentLabel.replace(/\(.*?\)/g, ""));
+
+    return (
+      normalized &&
+      !utilizationKeySet.has(normalized) &&
+      !utilizationKeySet.has(nameOnly)
+    );
   });
 
-  const normalizedScheduleAgents = new Set(
-    scheduledAgents.map((agent) => normalizeAgentName(agent))
-  );
-
   const extraUtilizationAgents = utilizationAgents.filter((agent) => {
-    const normalized = normalizeAgentName(agent);
-    return normalized && !normalizedScheduleAgents.has(normalized);
+    const normalized = normalizeAgentKey(agent);
+
+    return normalized && !scheduleKeySet.has(normalized);
   });
 
   const matchedAgentCount = Math.max(
@@ -114,18 +142,26 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
     overlapDates.includes(row.date)
   );
 
-  const billableHours = sum(overlapScheduleRows, "billableHours");
-  const phoneHours = sum(overlapUtilizationRows, "onCallHours");
-  const loggedHours = sum(overlapUtilizationRows, "loggedHours");
-  const availableHours = sum(overlapUtilizationRows, "availableHours");
-  const breakHours = sum(overlapUtilizationRows, "breakHours");
-  const offlineHours = sum(overlapUtilizationRows, "offlineHours");
+  const finalScheduleRows = overlapScheduleRows.length
+    ? overlapScheduleRows
+    : scheduleRows;
+
+  const finalUtilizationRows = overlapUtilizationRows.length
+    ? overlapUtilizationRows
+    : utilizationRows;
+
+  const billableHours = sum(finalScheduleRows, "billableHours");
+  const productiveScheduledHours = sum(finalScheduleRows, "productiveHours");
+
+  const phoneHours = sum(finalUtilizationRows, "onCallHours");
+  const loggedHours = sum(finalUtilizationRows, "loggedHours");
+  const availableHours = sum(finalUtilizationRows, "availableHours");
+  const breakHours = sum(finalUtilizationRows, "breakHours");
+  const offlineHours = sum(finalUtilizationRows, "offlineHours");
 
   const coverageAudit = buildCoverageAudit({
-    scheduleRows: overlapScheduleRows.length ? overlapScheduleRows : scheduleRows,
-    utilizationRows: overlapUtilizationRows.length
-      ? overlapUtilizationRows
-      : utilizationRows,
+    scheduleRows: finalScheduleRows,
+    utilizationRows: finalUtilizationRows,
   });
 
   const result = {
@@ -160,6 +196,8 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
     matchRate: coverageAudit.matchRate,
 
     billableHours,
+    productiveScheduledHours,
+
     phoneHours,
     loggedHours,
     availableHours,
@@ -170,6 +208,7 @@ function buildSiteBillableRow({ callCenter, utilizationRows, scheduleRows }) {
     unaccountedHours: billableHours - loggedHours,
 
     phoneUtilization: safeDivide(phoneHours, billableHours),
+    productivePhoneUtilization: safeDivide(phoneHours, productiveScheduledHours),
     scheduleAdherence: safeDivide(loggedHours, billableHours),
     availablePctOfBillable: safeDivide(availableHours, billableHours),
     breakPctOfBillable: safeDivide(breakHours, billableHours),
@@ -196,7 +235,7 @@ export function calculateBillableAnalysis({
   const callCenters = unique([
     ...utilizationRows.map((row) => row.callCenter),
     ...scheduleRows.map((row) => row.callCenter),
-  ]).filter((callCenter) => ["Buwelo", "WNS"].includes(callCenter));
+  ]).filter(Boolean);
 
   const siteRows = callCenters.map((callCenter) =>
     buildSiteBillableRow({
@@ -211,6 +250,7 @@ export function calculateBillableAnalysis({
   const totals = {
     callCenterCount: siteRows.length,
     billableHours: sum(siteRows, "billableHours"),
+    productiveScheduledHours: sum(siteRows, "productiveScheduledHours"),
     phoneHours: sum(siteRows, "phoneHours"),
     loggedHours: sum(siteRows, "loggedHours"),
     availableHours: sum(siteRows, "availableHours"),
@@ -227,6 +267,10 @@ export function calculateBillableAnalysis({
 
   totals.unaccountedHours = totals.billableHours - totals.loggedHours;
   totals.phoneUtilization = safeDivide(totals.phoneHours, totals.billableHours);
+  totals.productivePhoneUtilization = safeDivide(
+    totals.phoneHours,
+    totals.productiveScheduledHours
+  );
   totals.scheduleAdherence = safeDivide(totals.loggedHours, totals.billableHours);
 
   return {

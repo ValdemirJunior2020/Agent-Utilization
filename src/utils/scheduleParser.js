@@ -4,6 +4,8 @@ import * as XLSX from "xlsx";
 
 const WNS_SCHEDULE_TABS = ["Agent Sched", "Pavia", "Nesting Sched"];
 
+const FULL_TIME_BILLABLE_HOURS_PER_DAY = 6.5;
+
 function cleanText(value) {
   return String(value ?? "").trim();
 }
@@ -41,7 +43,6 @@ function normalizeDate(value) {
 
   const year = parsed.getFullYear();
 
-  // Prevent Excel time-only values from becoming fake dates like 1899-12-30
   if (year < 2020 || year > 2035) {
     return "";
   }
@@ -49,16 +50,35 @@ function normalizeDate(value) {
   return parsed.toISOString().slice(0, 10);
 }
 
+function capFullTimeBillableHours(hours) {
+  const value = Number(hours || 0);
+
+  if (!Number.isFinite(value) || value <= 0) return 0;
+
+  return Math.min(value, FULL_TIME_BILLABLE_HOURS_PER_DAY);
+}
+
 function scheduleValueToHours(value) {
   if (value === null || value === undefined || value === "") return 0;
 
+  let rawHours = 0;
+
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.getHours() + value.getMinutes() / 60;
+    rawHours = value.getHours() + value.getMinutes() / 60;
+    return capFullTimeBillableHours(rawHours);
   }
 
   if (typeof value === "number") {
-    if (value > 0 && value < 1) return value * 24;
-    if (value >= 1 && value <= 24) return value;
+    if (value > 0 && value < 1) {
+      rawHours = value * 24;
+      return capFullTimeBillableHours(rawHours);
+    }
+
+    if (value >= 1 && value <= 24) {
+      rawHours = value;
+      return capFullTimeBillableHours(rawHours);
+    }
+
     return 0;
   }
 
@@ -87,14 +107,22 @@ function scheduleValueToHours(value) {
   if (timeMatch) {
     const hours = Number(timeMatch[1]);
     const minutes = Number(timeMatch[2]);
-    return hours + minutes / 60;
+    rawHours = hours + minutes / 60;
+    return capFullTimeBillableHours(rawHours);
   }
 
   const numeric = Number(text);
 
   if (Number.isFinite(numeric)) {
-    if (numeric > 0 && numeric < 1) return numeric * 24;
-    if (numeric >= 1 && numeric <= 24) return numeric;
+    if (numeric > 0 && numeric < 1) {
+      rawHours = numeric * 24;
+      return capFullTimeBillableHours(rawHours);
+    }
+
+    if (numeric >= 1 && numeric <= 24) {
+      rawHours = numeric;
+      return capFullTimeBillableHours(rawHours);
+    }
   }
 
   return 0;
@@ -156,6 +184,7 @@ function parseBuweloPartnerVoice(rawMatrix, fileName) {
         scheduleDateEastern: scheduleDate,
         billableHours,
         rawScheduleValue: cleanText(rawScheduleValue),
+        billableRule: "Capped at 6.5 hours per full-time agent per day",
       });
     }
   }
@@ -217,6 +246,7 @@ function parseWnsScheduleSheet(rawMatrix, fileName, sourceSheet) {
         scheduleDateEastern: scheduleDate,
         billableHours,
         rawScheduleValue: cleanText(rawScheduleValue),
+        billableRule: "Capped at 6.5 hours per full-time agent per day",
       });
     }
   }
@@ -258,6 +288,7 @@ function buildScheduleSummary(rows) {
     activeScheduleEndDate:
       activeDates[activeDates.length - 1] || "Date not detected",
     totalBillableHours,
+    billableRule: "Full-time agent billable day capped at 6.5 hours",
   };
 }
 

@@ -30,6 +30,7 @@ import { exportSummaryPdf } from "./utils/exportUtils";
 import { getUploadHistory, saveUploadHistory } from "./utils/uploadHistoryService";
 import { trackEvent, trackPageVisit } from "./utils/tracking";
 import { loadSavedScheduleReports } from "./utils/savedScheduleLoader";
+import { loadSavedReportFiles } from "./utils/savedReportLoader";
 
 export default function App() {
   const [rows, setRows] = useState([]);
@@ -40,16 +41,55 @@ export default function App() {
   const [activeSection, setActiveSection] = useState("Billable Hours");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [scheduleLoadMessage, setScheduleLoadMessage] = useState("");
+  const [reportLoadMessage, setReportLoadMessage] = useState("");
 
   useEffect(() => {
     trackPageVisit();
 
     getUploadHistory()
-      .then((savedHistory) => setHistory(savedHistory))
+      .then((savedHistory) => {
+        if (savedHistory.length) {
+          setHistory((current) => [...current, ...savedHistory]);
+        }
+      })
       .catch((error) => console.warn("Upload history load failed:", error));
 
+    loadSavedReportsOnStart();
     loadSavedSchedulesOnStart();
   }, []);
+
+  const loadSavedReportsOnStart = async () => {
+    try {
+      const { reports, errors } = await loadSavedReportFiles();
+
+      if (reports.length) {
+        const parsedRows = reports.flatMap((report) => report.rows || []);
+
+        setRows(parsedRows);
+
+        setHistory((current) => [
+          ...reports.map(({ rows: _, ...report }) => report),
+          ...current,
+        ]);
+
+        setReportLoadMessage(
+          `${reports.length} saved Tableau utilization report(s) loaded automatically: ${reports
+            .map((report) => report.fileName)
+            .join(
+              ", "
+            )}. These files contain agent status minutes by date, agent, AUX/status, hourly bucket, and Grand Total. Phone Hours are calculated from On Call minutes divided by 60. Logged/status hours are calculated from On Call + Available + Break + Offline.`
+        );
+      }
+
+      if (errors.length) {
+        console.warn("Saved report load errors:", errors);
+        setReportLoadMessage(errors.join(" | "));
+      }
+    } catch (error) {
+      console.warn("Saved reports failed:", error);
+      setReportLoadMessage(error.message);
+    }
+  };
 
   const loadSavedSchedulesOnStart = async () => {
     try {
@@ -58,8 +98,13 @@ export default function App() {
       if (reports.length) {
         setScheduleReports(reports);
         setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
+
         setScheduleLoadMessage(
-          `${reports.length} saved schedule file(s) loaded automatically.`
+          `${reports.length} saved schedule file(s) loaded automatically: ${reports
+            .map((report) => report.fileName)
+            .join(
+              ", "
+            )}. Full-time scheduled/billable hours are capped at 6.5 hours per agent per day.`
         );
       }
 
@@ -97,8 +142,15 @@ export default function App() {
     const parsedRows = reports.flatMap((report) => report.rows || []);
 
     setRows(parsedRows);
+    setHistory(reports.map(({ rows: _, ...report }) => report));
     setSelectedSite("All");
     setActiveSection("Billable Hours");
+
+    setReportLoadMessage(
+      `${reports.length} manually uploaded Tableau utilization report(s) loaded: ${reports
+        .map((report) => report.fileName)
+        .join(", ")}.`
+    );
 
     setTimeout(() => {
       document
@@ -107,14 +159,9 @@ export default function App() {
     }, 150);
 
     try {
-      const savedReports = await saveUploadHistory(reports);
-      setHistory((current) => [...savedReports, ...current]);
+      await saveUploadHistory(reports);
     } catch (error) {
       console.warn("Could not save upload history:", error);
-      setHistory((current) => [
-        ...reports.map(({ rows: _, ...report }) => report),
-        ...current,
-      ]);
     }
   };
 
@@ -122,7 +169,12 @@ export default function App() {
     setScheduleReports(reports);
     setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
     setActiveSection("Billable Hours");
-    setScheduleLoadMessage(`${reports.length} schedule file(s) loaded.`);
+
+    setScheduleLoadMessage(
+      `${reports.length} schedule file(s) loaded: ${reports
+        .map((report) => report.fileName)
+        .join(", ")}.`
+    );
 
     setTimeout(() => {
       document
@@ -135,28 +187,16 @@ export default function App() {
     await trackEvent("dashboard_reset");
 
     setRows([]);
+    setHistory([]);
+    setScheduleReports([]);
+    setScheduleHistory([]);
     setSelectedSite("All");
     setActiveSection("Billable Hours");
+    setReportLoadMessage("");
+    setScheduleLoadMessage("");
 
-    try {
-      const { reports, errors } = await loadSavedScheduleReports();
-
-      setScheduleReports(reports);
-      setScheduleHistory(reports.map(({ rows: _, ...report }) => report));
-
-      if (reports.length) {
-        setScheduleLoadMessage(
-          `${reports.length} saved schedule file(s) reloaded automatically.`
-        );
-      }
-
-      if (errors.length) {
-        setScheduleLoadMessage(errors.join(" | "));
-      }
-    } catch (error) {
-      console.warn("Saved schedules reload failed:", error);
-      setScheduleLoadMessage(error.message);
-    }
+    await loadSavedReportsOnStart();
+    await loadSavedSchedulesOnStart();
   };
 
   const exportPdf = async () => {
@@ -247,38 +287,19 @@ export default function App() {
         />
 
         <main className="w-full min-w-0 space-y-5 lg:space-y-6">
-          <UploadPanel onUploadComplete={handleUploadComplete} history={history} />
+          <UploadPanel
+            onUploadComplete={handleUploadComplete}
+            history={history}
+            reportLoadMessage={reportLoadMessage}
+          />
 
           <ScheduleUploadPanel
             onScheduleUploadComplete={handleScheduleUploadComplete}
             scheduleHistory={scheduleHistory}
+            scheduleLoadMessage={scheduleLoadMessage}
           />
 
-          {scheduleLoadMessage && (
-            <section className="rounded-3xl border border-green-100 bg-green-50 p-4 text-sm font-bold text-green-800 shadow-sm">
-              {scheduleLoadMessage}
-            </section>
-          )}
-
           <UsageStats />
-
-          {!hasUtilizationData && (
-            <section className="rounded-3xl border border-dashed border-sky-200 bg-white p-8 text-center shadow-executive">
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-hpBlue">
-                Waiting for reports
-              </p>
-
-              <h2 className="mt-2 text-2xl font-black text-green-600">
-                Upload the Tableau Excel reports to activate the dashboard or click on
-                "Load Test Files"
-              </h2>
-
-              <p className="mx-auto mt-2 max-w-3xl text-sm leading-7 text-slate-500">
-                Saved schedules are loaded automatically. The full Billable Hours
-                comparison needs both utilization reports and schedule files.
-              </p>
-            </section>
-          )}
 
           {hasUtilizationData && (
             <>
@@ -296,7 +317,9 @@ export default function App() {
             </>
           )}
 
-          {(hasUtilizationData || hasScheduleData || activeSection === "Billable Hours") && (
+          {(hasUtilizationData ||
+            hasScheduleData ||
+            activeSection === "Billable Hours") && (
             <section
               id="active-section"
               className="print-card overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-executive"

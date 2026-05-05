@@ -1,167 +1,136 @@
 // /src/components/ScheduleUploadPanel.jsx
 
-import { useState } from "react";
-import { CalendarClock, FileSpreadsheet, Loader2 } from "lucide-react";
-import { parseScheduleFile } from "../utils/scheduleParser";
-import { trackEvent } from "../utils/tracking";
-import { savedScheduleFiles } from "../data/savedSchedules";
+import { CalendarClock, CheckCircle2, FileSpreadsheet, Info } from "lucide-react";
 
-async function parseScheduleUrl(url, fileName) {
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(`Could not load saved schedule: ${fileName}`);
-  }
-
-  const blob = await response.blob();
-
-  const file = new File([blob], fileName, {
-    type:
-      blob.type ||
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-
-  return parseScheduleFile(file);
-}
-
-export default function ScheduleUploadPanel({
-  onScheduleUploadComplete,
-  scheduleHistory = [],
-}) {
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [errors, setErrors] = useState([]);
-
-  const loadSavedSchedules = async () => {
-    await trackEvent("load_saved_schedules_click");
-
-    setLoading(true);
-    setErrors([]);
-    setMessage("Loading saved online schedules...");
-
-    const reports = [];
-    const fileErrors = [];
-
-    for (const savedFile of savedScheduleFiles) {
-      try {
-        const report = await parseScheduleUrl(savedFile.url, savedFile.fileName);
-        reports.push(report);
-      } catch (error) {
-        fileErrors.push(`${savedFile.fileName}: ${error.message}`);
-      }
-    }
-
-    setLoading(false);
-    setErrors(fileErrors);
-
-    if (reports.length) {
-      await trackEvent("saved_schedules_loaded", {
-        reportCount: reports.length,
-        fileNames: reports.map((report) => report.fileName).join(", "),
-      });
-
-      onScheduleUploadComplete(reports);
-      setMessage(`${reports.length} saved schedule file(s) loaded successfully.`);
-    } else {
-      setMessage("No saved schedules were loaded.");
-    }
-  };
+export default function ScheduleUploadPanel({ scheduleHistory = [], scheduleLoadMessage = "" }) {
+  const hasSchedules = scheduleHistory.length > 0;
 
   return (
     <section className="print-card rounded-3xl bg-white shadow-executive border border-slate-100 p-4 sm:p-6">
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-hpBlue">
             Saved Schedules
           </p>
 
           <h2 className="text-2xl sm:text-3xl font-black text-hpNavy">
-            Billable Hours Schedule Parser
+            Billable Hours Schedule Files Loaded Automatically
           </h2>
 
-          <p className="mt-2 max-w-4xl text-sm sm:text-base text-hpMuted">
-            Load the saved Buwelo and WNS schedule files already stored in the project.
-            The dashboard uses only the schedule dates that overlap with the utilization reports.
-          </p>
-
-          <p className="mt-2 text-sm font-bold text-amber-700">
-            Current supported tabs: Buwelo Partner_Voice, WNS Agent Sched,
-            WNS Pavia, and WNS Nesting Sched.
+          <p className="mt-2 max-w-5xl text-sm sm:text-base text-hpMuted">
+            The tool automatically loads the saved Buwelo and WNS schedule files from the project.
+            These schedules are used as the billable-hour denominator for the Billable Hours analysis.
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 no-print">
-          <button
-            onClick={loadSavedSchedules}
-            disabled={loading}
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-hpNavy px-5 py-3 text-sm font-black text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <FileSpreadsheet size={18} />
-            )}
-            Load Saved Schedules
-          </button>
+        <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-black text-green-700 ring-1 ring-green-100">
+          {hasSchedules ? (
+            <span className="inline-flex items-center gap-2">
+              <CheckCircle2 size={18} />
+              Schedules Loaded
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2">
+              <CalendarClock size={18} />
+              Loading Schedules
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2 rounded-2xl border-2 border-dashed border-green-200 bg-green-50/60 p-4 text-sm text-slate-700">
-          {loading ? (
-            <div className="flex items-center gap-3 font-bold text-green-700">
-              <Loader2 className="animate-spin" size={20} />
-              {message}
-            </div>
-          ) : (
-            <p>
-              {message ||
-                "No saved schedule files loaded yet. Click Load Saved Schedules to calculate Phone Hours / Billable Hours."}
-            </p>
-          )}
+      {scheduleLoadMessage && (
+        <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm font-bold text-green-800">
+          {scheduleLoadMessage}
+        </div>
+      )}
 
-          {!!errors.length && (
-            <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
-              {errors.map((error) => (
-                <p key={error}>{error}</p>
-              ))}
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="xl:col-span-2 rounded-2xl border border-sky-100 bg-sky-50 p-4">
+          <div className="flex items-start gap-3">
+            <Info className="mt-1 shrink-0 text-hpBlue" size={22} />
+
+            <div>
+              <p className="font-black text-hpNavy">
+                How the schedule files are being calculated
+              </p>
+
+              <div className="mt-2 space-y-2 text-sm leading-6 text-slate-700">
+                <p>
+                  <span className="font-black text-hpNavy">Business rule:</span>{" "}
+                  Full-time scheduled/billable hours are capped at{" "}
+                  <span className="font-black text-green-700">6.5 hours per agent per day</span>.
+                </p>
+
+                <p>
+                  <span className="font-black text-hpNavy">Formula:</span>{" "}
+                  Phone Utilization % = Phone Hours ÷ Billable Hours.
+                </p>
+
+                <p>
+                  <span className="font-black text-hpNavy">Phone Hours:</span>{" "}
+                  Comes from the Tableau utilization report On Call minutes divided by 60.
+                </p>
+
+                <p>
+                  <span className="font-black text-hpNavy">Billable Hours:</span>{" "}
+                  Comes from the saved schedule files, capped at 6.5 hours for each full-time agent day.
+                </p>
+
+                <p>
+                  <span className="font-black text-hpNavy">Important:</span>{" "}
+                  The dashboard only compares dates that exist in both the utilization report and schedule file.
+                </p>
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
         <div className="rounded-2xl bg-slate-50 p-4">
           <div className="flex items-center gap-2">
-            <CalendarClock size={18} className="text-green-700" />
-            <p className="font-black text-hpNavy">Schedule History</p>
+            <FileSpreadsheet size={18} className="text-green-700" />
+            <p className="font-black text-hpNavy">Files Loaded</p>
           </div>
 
-          <div className="mt-2 max-h-44 overflow-y-auto space-y-2 text-xs text-slate-600">
+          <div className="mt-3 max-h-56 overflow-y-auto space-y-2 text-xs text-slate-600">
             {scheduleHistory.length ? (
               scheduleHistory.map((item) => (
                 <div
                   key={`${item.fileName}-${item.uploadedAt}`}
-                  className="rounded-xl bg-white p-2 border border-slate-100"
+                  className="rounded-xl bg-white p-3 border border-slate-100"
                 >
-                  <p className="font-bold text-slate-800">
+                  <p className="font-black text-slate-800">
                     {item.callCenter || "Unknown Call Center"}
                   </p>
 
-                  <p className="truncate">{item.fileName}</p>
+                  <p className="truncate font-semibold">{item.fileName}</p>
 
-                  <p>Sheets: {item.sheetName || "N/A"}</p>
-
-                  <p>Dates: {item.scheduleDateRange || "Date not detected"}</p>
+                  <p className="mt-1">
+                    <span className="font-bold">Sheets:</span>{" "}
+                    {item.sheetName || "N/A"}
+                  </p>
 
                   <p>
-                    Agents: {item.agentCount || 0} · Billable Hours:{" "}
+                    <span className="font-bold">Dates:</span>{" "}
+                    {item.scheduleDateRange || "Date not detected"}
+                  </p>
+
+                  <p>
+                    <span className="font-bold">Agents:</span>{" "}
+                    {item.agentCount || 0}
+                  </p>
+
+                  <p>
+                    <span className="font-bold">Billable Hours:</span>{" "}
                     {Number(item.totalBillableHours || 0).toFixed(1)}
                   </p>
 
-                  <p>{item.uploadedAt}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Rule: {item.billableRule || "6.5 hours cap per full-time day"}
+                  </p>
                 </div>
               ))
             ) : (
-              <p>No schedule history yet.</p>
+              <p>No saved schedules loaded yet.</p>
             )}
           </div>
         </div>
