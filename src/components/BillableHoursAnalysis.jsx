@@ -8,10 +8,9 @@ import {
   CheckCircle2,
   Clock,
   Headphones,
-  ShieldAlert,
-  X,
   Users,
   DatabaseZap,
+  X,
 } from "lucide-react";
 import { calculateBillableAnalysis } from "../utils/billableHoursEngine";
 import { hours } from "../utils/formatters";
@@ -107,7 +106,11 @@ function getRiskReasons(site) {
     });
   }
 
-  if (site.phoneUtilization < 35 && site.hasUtilization && site.billableHours > 0) {
+  if (
+    site.phoneUtilization < 35 &&
+    site.hasUtilization &&
+    site.billableHours > 0
+  ) {
     reasons.push({
       title: "Low phone-time conversion",
       detail:
@@ -115,7 +118,11 @@ function getRiskReasons(site) {
     });
   }
 
-  if (site.scheduleAdherence < 70 && site.hasUtilization && site.billableHours > 0) {
+  if (
+    site.scheduleAdherence < 70 &&
+    site.hasUtilization &&
+    site.billableHours > 0
+  ) {
     reasons.push({
       title: "Low schedule adherence against billable hours",
       detail:
@@ -145,7 +152,9 @@ function getExecutiveExplanation(site) {
     site.overlapDateRange
   }). The dashboard found ${hours(site.billableHours)} billable hours, ${hours(
     site.phoneHours
-  )} phone hours, and ${hours(site.loggedHours)} logged/status hours. It also identified ${
+  )} phone hours, and ${hours(
+    site.loggedHours
+  )} logged/status hours. It also identified ${
     site.missingScheduledAgentCount
   } scheduled agent(s) that may be missing from Tableau and ${hours(
     site.unaccountedHours
@@ -259,9 +268,7 @@ function StatusExplanationModal({ site, onClose }) {
             <div className="flex items-start gap-3">
               <DatabaseZap className="mt-1 shrink-0 text-amber-700" />
               <div>
-                <p className="font-black text-amber-900">
-                  Data Accuracy Notice
-                </p>
+                <p className="font-black text-amber-900">Data Accuracy Notice</p>
                 <p className="mt-2 text-sm leading-7 text-amber-800">
                   This analysis is directional. Tableau hourly bucket logic may
                   overstate AUX statuses when an agent changes status inside the hour.
@@ -299,73 +306,6 @@ function StatusExplanationModal({ site, onClose }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-hpBlue">
-                Data Confidence Controls
-              </p>
-              <h3 className="mt-1 text-xl font-black text-hpNavy">
-                What must be validated before escalation
-              </h3>
-
-              <div className="mt-4 space-y-3 text-sm leading-7 text-slate-700">
-                <p>
-                  <span className="font-black text-hpNavy">1. Missing agents:</span>{" "}
-                  Identify scheduled agents who do not appear in Tableau and send them
-                  to the reporting owner to manually add or map them.
-                </p>
-                <p>
-                  <span className="font-black text-hpNavy">2. Agent ID mapping:</span>{" "}
-                  Confirm whether schedule IDs, HP IDs, EDS IDs, and agent names match
-                  across files.
-                </p>
-                <p>
-                  <span className="font-black text-hpNavy">3. Date overlap:</span>{" "}
-                  Confirm only matching dates are included in the comparison.
-                </p>
-                <p>
-                  <span className="font-black text-hpNavy">4. Hourly bucket logic:</span>{" "}
-                  Validate whether Tableau is assigning a full hour to Break, Available,
-                  Offline, or On Call when status changes inside the hour.
-                </p>
-                <p>
-                  <span className="font-black text-hpNavy">5. Raw interval data:</span>{" "}
-                  Request interval-level or status-duration data for final billing or
-                  vendor accountability decisions.
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-hpBlue">
-                Leadership Action
-              </p>
-              <h3 className="mt-1 text-xl font-black text-hpNavy">
-                Recommended next step
-              </h3>
-
-              <div className="mt-4 rounded-2xl bg-white p-4 text-sm leading-7 text-slate-700">
-                <p>
-                  Treat this as a data coverage and accuracy review first. Ask the
-                  vendor and reporting owner to confirm missing agents, schedule coverage,
-                  date alignment, and Tableau hourly bucket logic. Once the missing agents
-                  are corrected and bucket behavior is understood, rerun the billable-hours
-                  calculation.
-                </p>
-              </div>
-
-              <div className="mt-4 rounded-2xl bg-hpNavy p-4 text-sm leading-7 text-white">
-                <p className="font-black">Message to leadership:</p>
-                <p className="mt-1">
-                  The dashboard is identifying a risk signal, not a final conclusion.
-                  The current result may be affected by missing Tableau agents and hourly
-                  bucket distortion. We should validate the data first, then use the
-                  corrected report for vendor performance or billing decisions.
-                </p>
-              </div>
-            </div>
-          </div>
-
           {!!site.missingScheduledAgents?.length && (
             <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
               <div className="flex items-start gap-3">
@@ -390,12 +330,6 @@ function StatusExplanationModal({ site, onClose }) {
                   </span>
                 ))}
               </div>
-
-              {site.missingScheduledAgents.length > 30 && (
-                <p className="mt-3 text-sm font-bold text-slate-500">
-                  Showing first 30 of {site.missingScheduledAgents.length} missing agents.
-                </p>
-              )}
             </div>
           )}
 
@@ -410,6 +344,16 @@ function StatusExplanationModal({ site, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function HeaderCell({ children, className = "" }) {
+  return (
+    <th
+      className={`px-4 py-3 text-left text-xs uppercase tracking-widest text-slate-500 align-top ${className}`}
+    >
+      {children}
+    </th>
   );
 }
 
@@ -460,9 +404,7 @@ export default function BillableHoursAnalysis({
         <div className="flex items-start gap-3">
           <DatabaseZap className="mt-1 text-amber-700" />
           <div>
-            <p className="font-black text-amber-900">
-              Data Accuracy Notice
-            </p>
+            <p className="font-black text-amber-900">Data Accuracy Notice</p>
             <p className="mt-1 text-sm leading-7 text-amber-800">
               This analysis is directional. Tableau hourly bucket logic may overstate
               AUX statuses when an agent changes status inside the hour. If Break,
@@ -564,24 +506,27 @@ export default function BillableHoursAnalysis({
         </div>
 
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[1450px] text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-widest text-slate-500">
+          <table className="w-full min-w-[1650px] text-sm">
+            <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3">Call Center</th>
-                <th className="px-4 py-3">Schedule Dates</th>
-                <th className="px-4 py-3">Utilization Dates</th>
-                <th className="px-4 py-3">Compared Dates</th>
-                <th className="px-4 py-3">Schedule Agents</th>
-                <th className="px-4 py-3">Util Agents</th>
-                <th className="px-4 py-3">Matched</th>
-                <th className="px-4 py-3">Missing</th>
-                <th className="px-4 py-3">Match Rate</th>
-                <th className="px-4 py-3">Billable Hours</th>
-                <th className="px-4 py-3">Phone Hours</th>
-                <th className="px-4 py-3">Phone Util %</th>
-                <th className="px-4 py-3">Adherence %</th>
-                <th className="px-4 py-3">Unaccounted</th>
-                <th className="px-4 py-3">Status</th>
+                <HeaderCell className="min-w-[110px]">Call Center</HeaderCell>
+                <HeaderCell className="min-w-[120px]">Schedule Dates</HeaderCell>
+                <HeaderCell className="min-w-[120px]">Utilization Dates</HeaderCell>
+                <HeaderCell className="min-w-[120px]">Compared Dates</HeaderCell>
+                <HeaderCell className="min-w-[90px]">Schedule Agents</HeaderCell>
+                <HeaderCell className="min-w-[80px]">Util Agents</HeaderCell>
+                <HeaderCell className="min-w-[80px]">Matched</HeaderCell>
+                <HeaderCell className="min-w-[80px]">Missing</HeaderCell>
+                <HeaderCell className="min-w-[90px]">Match Rate</HeaderCell>
+                <HeaderCell className="min-w-[95px]">Billable Hours</HeaderCell>
+                <HeaderCell className="min-w-[90px]">Phone Hours</HeaderCell>
+                <HeaderCell className="min-w-[95px]">Phone Util %</HeaderCell>
+                <HeaderCell className="min-w-[95px]">Adherence %</HeaderCell>
+                <HeaderCell className="min-w-[110px]">
+                  <span className="block">Unaccounted</span>
+                  <span className="block">Hours</span>
+                </HeaderCell>
+                <HeaderCell className="min-w-[120px]">Status</HeaderCell>
               </tr>
             </thead>
 
@@ -589,34 +534,34 @@ export default function BillableHoursAnalysis({
               {siteRows.length ? (
                 siteRows.map((site) => (
                   <tr key={site.callCenter} className="hover:bg-sky-50">
-                    <td className="px-4 py-3 font-black text-hpNavy">
+                    <td className="px-4 py-4 font-black text-hpNavy">
                       {site.callCenter}
                     </td>
 
-                    <td className="px-4 py-3">{site.scheduleDateRange}</td>
-                    <td className="px-4 py-3">{site.utilizationDateRange}</td>
-                    <td className="px-4 py-3 font-bold text-green-700">
+                    <td className="px-4 py-4">{site.scheduleDateRange}</td>
+                    <td className="px-4 py-4">{site.utilizationDateRange}</td>
+                    <td className="px-4 py-4 font-bold text-green-700">
                       {site.overlapDateRange}
                     </td>
-                    <td className="px-4 py-3">{site.scheduleAgentCount}</td>
-                    <td className="px-4 py-3">{site.utilizationAgentCount}</td>
-                    <td className="px-4 py-3">{site.matchedAgentCount}</td>
-                    <td className="px-4 py-3 font-black text-red-700">
+                    <td className="px-4 py-4">{site.scheduleAgentCount}</td>
+                    <td className="px-4 py-4">{site.utilizationAgentCount}</td>
+                    <td className="px-4 py-4">{site.matchedAgentCount}</td>
+                    <td className="px-4 py-4 font-black text-red-700">
                       {site.missingScheduledAgentCount}
                     </td>
-                    <td className="px-4 py-3">{percent(site.matchRate)}</td>
-                    <td className="px-4 py-3">{hours(site.billableHours)}</td>
-                    <td className="px-4 py-3">{hours(site.phoneHours)}</td>
-                    <td className="px-4 py-3 font-black">
+                    <td className="px-4 py-4">{percent(site.matchRate)}</td>
+                    <td className="px-4 py-4">{hours(site.billableHours)}</td>
+                    <td className="px-4 py-4">{hours(site.phoneHours)}</td>
+                    <td className="px-4 py-4 font-black">
                       {percent(site.phoneUtilization)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-4">
                       {percent(site.scheduleAdherence)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-4">
                       {hours(site.unaccountedHours)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-4">
                       <button
                         type="button"
                         onClick={() => setSelectedStatusSite(site)}
