@@ -1,6 +1,7 @@
 // /src/components/Sidebar.jsx
 
 import {
+  Activity,
   BarChart3,
   BriefcaseBusiness,
   CalendarClock,
@@ -16,6 +17,7 @@ import {
 const items = [
   { label: "Leadership Brief", icon: BriefcaseBusiness },
   { label: "Billable Hours", icon: CalendarClock },
+  { label: "Operations Intelligence", icon: Activity },
   { label: "Executive Summary", icon: ClipboardList },
   { label: "Site Comparison", icon: BarChart3 },
   { label: "Agent Utilization", icon: Users },
@@ -65,16 +67,17 @@ function SidebarContent({ activeSection, setActiveSection, onClose }) {
         </p>
 
         <p className="mt-2 text-sm leading-6">
-          Use billable hours as the denominator. Phone time alone is only the numerator.
+          Use billable hours, agent coverage, and abandoned-call pressure together.
+          Phone time alone is only one part of the operation.
         </p>
       </div>
 
       <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4">
         <p className="text-xs font-black uppercase tracking-widest text-green-700">
-          New Equation
+          Operations Equation
         </p>
         <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
-          Phone Utilization = Phone Hours ÷ Billable Hours
+          Productivity + Coverage + Queue Pressure = True Operations Risk
         </p>
       </div>
     </div>

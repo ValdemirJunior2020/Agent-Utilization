@@ -8,6 +8,7 @@ import ScheduleUploadPanel from "./components/ScheduleUploadPanel";
 import UsageStats from "./components/UsageStats";
 import LeadershipBrief from "./components/LeadershipBrief";
 import BillableHoursAnalysis from "./components/BillableHoursAnalysis";
+import OperationsIntelligence from "./components/OperationsIntelligence";
 import ExecutiveSummary from "./components/ExecutiveSummary";
 import KpiCards from "./components/KpiCards";
 import SiteComparisonTable from "./components/SiteComparisonTable";
@@ -31,17 +32,20 @@ import { getUploadHistory, saveUploadHistory } from "./utils/uploadHistoryServic
 import { trackEvent, trackPageVisit } from "./utils/tracking";
 import { loadSavedScheduleReports } from "./utils/savedScheduleLoader";
 import { loadSavedReportFiles } from "./utils/savedReportLoader";
+import { loadSavedOperationsFiles } from "./utils/savedOperationsLoader";
 
 export default function App() {
   const [rows, setRows] = useState([]);
   const [history, setHistory] = useState([]);
   const [scheduleReports, setScheduleReports] = useState([]);
   const [scheduleHistory, setScheduleHistory] = useState([]);
+  const [operationsReports, setOperationsReports] = useState([]);
   const [selectedSite, setSelectedSite] = useState("All");
   const [activeSection, setActiveSection] = useState("Billable Hours");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [scheduleLoadMessage, setScheduleLoadMessage] = useState("");
   const [reportLoadMessage, setReportLoadMessage] = useState("");
+  const [operationsLoadMessage, setOperationsLoadMessage] = useState("");
 
   useEffect(() => {
     trackPageVisit();
@@ -56,6 +60,7 @@ export default function App() {
 
     loadSavedReportsOnStart();
     loadSavedSchedulesOnStart();
+    loadSavedOperationsOnStart();
   }, []);
 
   const loadSavedReportsOnStart = async () => {
@@ -75,9 +80,7 @@ export default function App() {
         setReportLoadMessage(
           `${reports.length} saved Tableau utilization report(s) loaded automatically: ${reports
             .map((report) => report.fileName)
-            .join(
-              ", "
-            )}. These files contain agent status minutes by date, agent, AUX/status, hourly bucket, and Grand Total. Phone Hours are calculated from On Call minutes divided by 60. Logged/status hours are calculated from On Call + Available + Break + Offline.`
+            .join(", ")}. These files contain agent status minutes by date, agent, AUX/status, hourly bucket, and Grand Total. Phone Hours are calculated from On Call minutes divided by 60. Logged/status hours are calculated from On Call + Available + Break + Offline.`
         );
       }
 
@@ -102,9 +105,7 @@ export default function App() {
         setScheduleLoadMessage(
           `${reports.length} saved schedule file(s) loaded automatically: ${reports
             .map((report) => report.fileName)
-            .join(
-              ", "
-            )}. Full-time scheduled/billable hours are capped at 6.5 hours per agent per day.`
+            .join(", ")}. Full-time scheduled/billable hours are capped at 6.5 hours per agent per day.`
         );
       }
 
@@ -115,6 +116,29 @@ export default function App() {
     } catch (error) {
       console.warn("Saved schedules failed:", error);
       setScheduleLoadMessage(error.message);
+    }
+  };
+
+  const loadSavedOperationsOnStart = async () => {
+    try {
+      const { reports, errors } = await loadSavedOperationsFiles();
+
+      if (reports.length) {
+        setOperationsReports(reports);
+        setOperationsLoadMessage(
+          `${reports.length} operations intelligence file(s) loaded automatically: ${reports
+            .map((report) => report.fileName)
+            .join(", ")}. TUS Service Agents contains Telus/TUS answered calls, outbound calls, agent IDs, and average talk time. Abandoned Calls by Hour contains abandoned-call volume by date, weekday, and hour.`
+        );
+      }
+
+      if (errors.length) {
+        console.warn("Saved operations load errors:", errors);
+        setOperationsLoadMessage(errors.join(" | "));
+      }
+    } catch (error) {
+      console.warn("Saved operations files failed:", error);
+      setOperationsLoadMessage(error.message);
     }
   };
 
@@ -137,6 +161,7 @@ export default function App() {
 
   const hasUtilizationData = rows.length > 0;
   const hasScheduleData = scheduleReports.length > 0;
+  const hasOperationsData = operationsReports.length > 0;
 
   const handleUploadComplete = async (reports) => {
     const parsedRows = reports.flatMap((report) => report.rows || []);
@@ -190,13 +215,16 @@ export default function App() {
     setHistory([]);
     setScheduleReports([]);
     setScheduleHistory([]);
+    setOperationsReports([]);
     setSelectedSite("All");
     setActiveSection("Billable Hours");
     setReportLoadMessage("");
     setScheduleLoadMessage("");
+    setOperationsLoadMessage("");
 
     await loadSavedReportsOnStart();
     await loadSavedSchedulesOnStart();
+    await loadSavedOperationsOnStart();
   };
 
   const exportPdf = async () => {
@@ -232,6 +260,13 @@ export default function App() {
       <BillableHoursAnalysis
         utilizationRows={rows}
         scheduleReports={scheduleReports}
+      />
+    ),
+
+    "Operations Intelligence": (
+      <OperationsIntelligence
+        operationsReports={operationsReports}
+        operationsLoadMessage={operationsLoadMessage}
       />
     ),
 
@@ -319,6 +354,7 @@ export default function App() {
 
           {(hasUtilizationData ||
             hasScheduleData ||
+            hasOperationsData ||
             activeSection === "Billable Hours") && (
             <section
               id="active-section"
