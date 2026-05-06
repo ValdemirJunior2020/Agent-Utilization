@@ -19,13 +19,13 @@ export default function AgentMappingNotice({
           </p>
 
           <h2 className="text-2xl font-black text-hpNavy">
-            Concentrix HP IDs Mapped to Real Agent Names
+            HP IDs Mapped to Real Agent Names
           </h2>
 
           <p className="mt-2 max-w-5xl text-sm leading-7 text-slate-600">
-            The dashboard uses the Concentrix login file to replace Tableau HP IDs
-            with real agent names. This helps identify agents spending too much time
-            on Break, too much time Available, or not receiving calls.
+            The dashboard uses uploaded login/mapping files to replace Tableau HP IDs
+            with real agent names. This makes the Break, Available, Offline, and On Call
+            analysis easier to coach and validate.
           </p>
         </div>
 
@@ -58,28 +58,60 @@ export default function AgentMappingNotice({
 
       <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
         <div className="flex items-start gap-3">
-          <IdCard className="mt-1 text-hpBlue" />
-          <div className="text-sm leading-7 text-slate-700">
+          <IdCard className="mt-1 shrink-0 text-hpBlue" />
+
+          <div className="w-full text-sm leading-7 text-slate-700">
             <p>
-              <span className="font-black text-hpNavy">Loaded file:</span>{" "}
+              <span className="font-black text-hpNavy">Loaded files:</span>{" "}
               {summary.fileNames.length ? summary.fileNames.join(", ") : "None"}
             </p>
 
             <p>
-              <span className="font-black text-hpNavy">Call center:</span>{" "}
-              {summary.callCenters.length ? summary.callCenters.join(", ") : "None"}
-            </p>
-
-            <p>
-              <span className="font-black text-hpNavy">Mapping rule:</span>{" "}
-              CON Master List tab, Column K = HP ID, Column D = Agent Name.
+              <span className="font-black text-hpNavy">Call centers:</span>{" "}
+              {summary.callCenters.length
+                ? summary.callCenters.join(", ")
+                : "None"}
             </p>
 
             <p>
               <span className="font-black text-hpNavy">Operations purpose:</span>{" "}
-              Once mapped, we can review real agents by Break hours, Available hours,
-              Offline time, On Call time, and utilization balance.
+              Identify real agents with too much Break time, too much Available time,
+              too much Offline time, low On Call time, or no call activity.
             </p>
+
+            {summary.sources.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[760px] text-xs">
+                  <thead className="bg-white text-left uppercase tracking-widest text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Call Center</th>
+                      <th className="px-3 py-2">File</th>
+                      <th className="px-3 py-2">Tab</th>
+                      <th className="px-3 py-2">Source</th>
+                      <th className="px-3 py-2">Mappings</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {summary.sources.map((source) => (
+                      <tr
+                        key={`${source.fileName}-${source.sheetName}-${source.sourceLabel}`}
+                      >
+                        <td className="px-3 py-2 font-black text-hpNavy">
+                          {source.callCenter}
+                        </td>
+                        <td className="px-3 py-2">{source.fileName}</td>
+                        <td className="px-3 py-2">{source.sheetName}</td>
+                        <td className="px-3 py-2">{source.sourceLabel}</td>
+                        <td className="px-3 py-2 font-black">
+                          {source.mappingCount}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </div>

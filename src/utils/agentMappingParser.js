@@ -3,11 +3,11 @@
 import * as XLSX from "xlsx";
 
 function cleanText(value) {
-  return String(value ?? "").trim();
+  return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
 function normalizeText(value) {
-  return cleanText(value).toLowerCase().replace(/\s+/g, " ");
+  return cleanText(value).toLowerCase();
 }
 
 function normalizeHpId(value) {
@@ -16,7 +16,7 @@ function normalizeHpId(value) {
 
 function columnLetterToIndex(letter) {
   let index = 0;
-  const normalized = String(letter || "").toUpperCase();
+  const normalized = String(letter || "").toUpperCase().trim();
 
   for (let i = 0; i < normalized.length; i += 1) {
     index = index * 26 + normalized.charCodeAt(i) - 64;
@@ -32,8 +32,12 @@ function isBadName(value) {
   if (text === "agent") return true;
   if (text === "agent name") return true;
   if (text === "name") return true;
+  if (text === "first name") return true;
+  if (text === "last name") return true;
   if (text.includes("grand total")) return true;
   if (text === "total") return true;
+  if (text === "null") return true;
+  if (text === "undefined") return true;
 
   return false;
 }
@@ -44,10 +48,47 @@ function isValidHpId(value) {
   if (!text) return false;
   if (text === "hpid") return false;
   if (text === "hp id") return false;
-  if (text === "hp") return false;
+  if (text === "id") return false;
+  if (text === "id*") return false;
+  if (text === "n/a") return false;
+  if (text === "na") return false;
+  if (text === "no account found") return false;
+  if (text === "null") return false;
   if (text.length < 3) return false;
 
   return true;
+}
+
+function getAgentName(row, config) {
+  if (config.fullNameColumn) {
+    const fullNameIndex = columnLetterToIndex(config.fullNameColumn);
+    return cleanText(row[fullNameIndex]);
+  }
+
+  const firstNameIndex = columnLetterToIndex(config.firstNameColumn);
+  const lastNameIndex = columnLetterToIndex(config.lastNameColumn);
+
+  const firstName = cleanText(row[firstNameIndex]);
+  const lastName = cleanText(row[lastNameIndex]);
+
+  return cleanText(`${firstName} ${lastName}`);
+}
+
+function buildHpIdAliases(hpIdOriginal) {
+  const raw = normalizeHpId(hpIdOriginal);
+  const aliases = new Set();
+
+  if (!raw) return [];
+
+  aliases.add(raw);
+
+  if (raw.startsWith("hp")) {
+    aliases.add(raw.replace(/^hp/, ""));
+  } else if (/^\d+$/.test(raw)) {
+    aliases.add(`hp${raw}`);
+  }
+
+  return [...aliases];
 }
 
 export async function parseAgentMappingFile(file, config) {
@@ -75,28 +116,34 @@ export async function parseAgentMappingFile(file, config) {
   });
 
   const hpIdIndex = columnLetterToIndex(config.hpIdColumn);
-  const nameIndex = columnLetterToIndex(config.nameColumn);
 
   const rows = [];
   const map = {};
+  const seen = new Set();
 
   for (let rowIndex = 0; rowIndex < matrix.length; rowIndex += 1) {
     const row = matrix[rowIndex];
 
     if (!Array.isArray(row)) continue;
 
-    const agentName = cleanText(row[nameIndex]);
-    const hpIdRaw = cleanText(row[hpIdIndex]);
-    const hpId = normalizeHpId(hpIdRaw);
+    const agentName = getAgentName(row, config);
+    const hpIdOriginal = cleanText(row[hpIdIndex]);
+    const hpId = normalizeHpId(hpIdOriginal);
 
     if (isBadName(agentName)) continue;
-    if (!isValidHpId(hpId)) continue;
+    if (!isValidHpId(hpIdOriginal)) continue;
+
+    const uniqueKey = `${config.callCenter}-${config.sheetName}-${hpId}`;
+
+    if (seen.has(uniqueKey)) continue;
+    seen.add(uniqueKey);
 
     const record = {
-      id: `${config.callCenter}-${hpId}`,
+      id: uniqueKey,
       callCenter: config.callCenter,
+      sourceLabel: config.sourceLabel || config.sheetName,
       hpId,
-      hpIdOriginal: hpIdRaw,
+      hpIdOriginal,
       agentName,
       rowNumber: rowIndex + 1,
       sourceFile: file.name,
@@ -104,18 +151,22 @@ export async function parseAgentMappingFile(file, config) {
     };
 
     rows.push(record);
-    map[hpId] = record;
+
+    for (const alias of buildHpIdAliases(hpIdOriginal)) {
+      map[alias] = record;
+    }
   }
 
   if (!rows.length) {
     throw new Error(
-      `No agent mapping rows found in ${file.name}. Check tab "${sheetName}", name column ${config.nameColumn}, and HP ID column ${config.hpIdColumn}.`
+      `No agent mapping rows found in ${file.name}. Check tab "${sheetName}", name columns, and HP ID column ${config.hpIdColumn}.`
     );
   }
 
   return {
     fileName: file.name,
     callCenter: config.callCenter,
+    sourceLabel: config.sourceLabel || sheetName,
     sheetName,
     uploadedAt: new Date().toLocaleString(),
     rowCount: rows.length,
@@ -136,8 +187,9 @@ export function buildAgentMappingIndex(mappingReports = []) {
     }
 
     for (const row of report.rows || []) {
-      index[callCenter][normalizeHpId(row.hpId)] = row;
-      index[callCenter][normalizeHpId(row.hpIdOriginal)] = row;
+      for (const alias of buildHpIdAliases(row.hpIdOriginal || row.hpId)) {
+        index[callCenter][alias] = row;
+      }
     }
   }
 
@@ -156,6 +208,7 @@ export function applyAgentMappings(rows = [], mappingReports = []) {
     if (!mapping) {
       return {
         ...row,
+        agentOriginal: rawAgent,
         agentHpId: rawAgent,
         agentDisplayName: rawAgent,
         agentMapped: false,
@@ -169,8 +222,9 @@ export function applyAgentMappings(rows = [], mappingReports = []) {
       agentName: mapping.agentName,
       agentDisplayName: mapping.agentName,
       agentMapped: true,
+      agentMappingSource: mapping.sourceLabel,
 
-      // This makes charts/tables show the real name instead of hp ID.
+      // This makes charts/tables show real names instead of HP IDs.
       agent: mapping.agentName,
     };
   });
@@ -186,9 +240,22 @@ export function getAgentMappingSummary(mappingReports = []) {
     ...new Set(mappingReports.map((report) => report.callCenter).filter(Boolean)),
   ];
 
+  const fileNames = [
+    ...new Set(mappingReports.map((report) => report.fileName).filter(Boolean)),
+  ];
+
+  const sources = mappingReports.map((report) => ({
+    callCenter: report.callCenter,
+    fileName: report.fileName,
+    sheetName: report.sheetName,
+    sourceLabel: report.sourceLabel,
+    mappingCount: report.mappingCount || 0,
+  }));
+
   return {
     totalMappings,
     callCenters,
-    fileNames: mappingReports.map((report) => report.fileName),
+    fileNames,
+    sources,
   };
 }

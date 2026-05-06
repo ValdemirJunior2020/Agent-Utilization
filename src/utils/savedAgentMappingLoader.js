@@ -30,7 +30,7 @@ export async function loadSavedAgentMappings() {
       const report = await parseMappingUrl(config);
       reports.push(report);
     } catch (error) {
-      errors.push(`${config.fileName}: ${error.message}`);
+      errors.push(`${config.fileName} / ${config.sheetName}: ${error.message}`);
     }
   }
 
