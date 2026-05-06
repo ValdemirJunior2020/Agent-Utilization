@@ -5,6 +5,7 @@ import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import UploadPanel from "./components/UploadPanel";
 import ScheduleUploadPanel from "./components/ScheduleUploadPanel";
+import AgentMappingNotice from "./components/AgentMappingNotice";
 import UsageStats from "./components/UsageStats";
 import LeadershipBrief from "./components/LeadershipBrief";
 import BillableHoursAnalysis from "./components/BillableHoursAnalysis";
@@ -33,6 +34,8 @@ import { trackEvent, trackPageVisit } from "./utils/tracking";
 import { loadSavedScheduleReports } from "./utils/savedScheduleLoader";
 import { loadSavedReportFiles } from "./utils/savedReportLoader";
 import { loadSavedOperationsFiles } from "./utils/savedOperationsLoader";
+import { loadSavedAgentMappings } from "./utils/savedAgentMappingLoader";
+import { applyAgentMappings } from "./utils/agentMappingParser";
 
 export default function App() {
   const [rows, setRows] = useState([]);
@@ -40,12 +43,14 @@ export default function App() {
   const [scheduleReports, setScheduleReports] = useState([]);
   const [scheduleHistory, setScheduleHistory] = useState([]);
   const [operationsReports, setOperationsReports] = useState([]);
+  const [agentMappingReports, setAgentMappingReports] = useState([]);
   const [selectedSite, setSelectedSite] = useState("All");
   const [activeSection, setActiveSection] = useState("Billable Hours");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [scheduleLoadMessage, setScheduleLoadMessage] = useState("");
   const [reportLoadMessage, setReportLoadMessage] = useState("");
   const [operationsLoadMessage, setOperationsLoadMessage] = useState("");
+  const [agentMappingLoadMessage, setAgentMappingLoadMessage] = useState("");
 
   useEffect(() => {
     trackPageVisit();
@@ -61,6 +66,7 @@ export default function App() {
     loadSavedReportsOnStart();
     loadSavedSchedulesOnStart();
     loadSavedOperationsOnStart();
+    loadSavedAgentMappingsOnStart();
   }, []);
 
   const loadSavedReportsOnStart = async () => {
@@ -80,7 +86,7 @@ export default function App() {
         setReportLoadMessage(
           `${reports.length} saved Tableau utilization report(s) loaded automatically: ${reports
             .map((report) => report.fileName)
-            .join(", ")}. These files contain agent status minutes by date, agent, AUX/status, hourly bucket, and Grand Total. Phone Hours are calculated from On Call minutes divided by 60. Logged/status hours are calculated from On Call + Available + Break + Offline.`
+            .join(", ")}. These files contain agent status minutes by date, agent, AUX/status, hourly bucket, and Grand Total.`
         );
       }
 
@@ -128,7 +134,7 @@ export default function App() {
         setOperationsLoadMessage(
           `${reports.length} operations intelligence file(s) loaded automatically: ${reports
             .map((report) => report.fileName)
-            .join(", ")}. TUS Service Agents contains Telus/TUS answered calls, outbound calls, agent IDs, and average talk time. Abandoned Calls by Hour contains abandoned-call volume by date, weekday, and hour.`
+            .join(", ")}.`
         );
       }
 
@@ -142,7 +148,35 @@ export default function App() {
     }
   };
 
-  const dashboard = useMemo(() => calculateDashboard(rows), [rows]);
+  const loadSavedAgentMappingsOnStart = async () => {
+    try {
+      const { reports, errors } = await loadSavedAgentMappings();
+
+      if (reports.length) {
+        setAgentMappingReports(reports);
+        setAgentMappingLoadMessage(
+          `${reports.length} agent mapping file(s) loaded automatically: ${reports
+            .map((report) => `${report.fileName} (${report.mappingCount} mappings)`)
+            .join(", ")}.`
+        );
+      }
+
+      if (errors.length) {
+        console.warn("Saved agent mapping load errors:", errors);
+        setAgentMappingLoadMessage(errors.join(" | "));
+      }
+    } catch (error) {
+      console.warn("Saved agent mappings failed:", error);
+      setAgentMappingLoadMessage(error.message);
+    }
+  };
+
+  const mappedRows = useMemo(
+    () => applyAgentMappings(rows, agentMappingReports),
+    [rows, agentMappingReports]
+  );
+
+  const dashboard = useMemo(() => calculateDashboard(mappedRows), [mappedRows]);
 
   const redFlags = useMemo(
     () => buildRedFlags(dashboard.siteKPIs, dashboard.agentKPIs),
@@ -159,7 +193,7 @@ export default function App() {
     [dashboard.siteKPIs, dashboard.totals, redFlags]
   );
 
-  const hasUtilizationData = rows.length > 0;
+  const hasUtilizationData = mappedRows.length > 0;
   const hasScheduleData = scheduleReports.length > 0;
   const hasOperationsData = operationsReports.length > 0;
 
@@ -216,15 +250,18 @@ export default function App() {
     setScheduleReports([]);
     setScheduleHistory([]);
     setOperationsReports([]);
+    setAgentMappingReports([]);
     setSelectedSite("All");
     setActiveSection("Billable Hours");
     setReportLoadMessage("");
     setScheduleLoadMessage("");
     setOperationsLoadMessage("");
+    setAgentMappingLoadMessage("");
 
     await loadSavedReportsOnStart();
     await loadSavedSchedulesOnStart();
     await loadSavedOperationsOnStart();
+    await loadSavedAgentMappingsOnStart();
   };
 
   const exportPdf = async () => {
@@ -252,13 +289,13 @@ export default function App() {
         redFlags={redFlags}
         recommendations={recommendations}
         history={history}
-        rows={rows}
+        rows={mappedRows}
       />
     ),
 
     "Billable Hours": (
       <BillableHoursAnalysis
-        utilizationRows={rows}
+        utilizationRows={mappedRows}
         scheduleReports={scheduleReports}
       />
     ),
@@ -302,7 +339,7 @@ export default function App() {
 
     Recommendations: <RecommendationsPanel recommendations={recommendations} />,
 
-    "Raw Data": <RawDataTable rows={rows} />,
+    "Raw Data": <RawDataTable rows={mappedRows} />,
   };
 
   return (
@@ -332,6 +369,11 @@ export default function App() {
             onScheduleUploadComplete={handleScheduleUploadComplete}
             scheduleHistory={scheduleHistory}
             scheduleLoadMessage={scheduleLoadMessage}
+          />
+
+          <AgentMappingNotice
+            mappingReports={agentMappingReports}
+            mappingLoadMessage={agentMappingLoadMessage}
           />
 
           <UsageStats />
