@@ -520,7 +520,11 @@ export default function App() {
 
           {hasUtilizationData && (
             <>
-              <KpiCards totals={dashboard.totals} redFlags={redFlags} />
+              <KpiCards
+  totals={dashboard.totals}
+  redFlags={redFlags}
+  googleAgentCounts={googleAgentCounts}
+/>
 
               <section className="grid grid-cols-1 gap-4 lg:gap-5 xl:grid-cols-2">
                 <UtilizationBarChart siteKPIs={dashboard.siteKPIs} />

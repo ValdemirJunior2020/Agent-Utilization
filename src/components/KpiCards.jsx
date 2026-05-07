@@ -2,102 +2,170 @@
 
 import {
   AlertTriangle,
-  Banknote,
-  CalendarDays,
-  Clock,
+  Clock3,
   Headphones,
+  TimerOff,
   Users,
+  UserCheck,
 } from "lucide-react";
-import { hours, percent } from "../utils/formatters";
 
-function Card({ title, value, detail, icon: Icon, tone = "blue" }) {
+function number(value) {
+  return Number(value || 0).toLocaleString();
+}
+
+function hours(value) {
+  return `${Number(value || 0).toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  })}h`;
+}
+
+function percent(value) {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function getRosterAgentTotal(googleAgentCounts = []) {
+  return googleAgentCounts.reduce((total, item) => {
+    return total + Number(item.activeAgents || item.agents || 0);
+  }, 0);
+}
+
+function KpiCard({
+  title,
+  value,
+  detail,
+  icon: Icon,
+  tone = "blue",
+}) {
   const tones = {
-    blue: "bg-blue-50 text-hpBlue",
-    green: "bg-green-50 text-hpSuccess",
-    amber: "bg-amber-50 text-hpWarning",
-    red: "bg-red-50 text-hpDanger",
-    navy: "bg-slate-100 text-hpNavy",
+    blue: {
+      icon: "bg-sky-50 text-hpBlue",
+      border: "border-slate-100",
+    },
+    green: {
+      icon: "bg-green-50 text-green-700",
+      border: "border-green-100",
+    },
+    amber: {
+      icon: "bg-amber-50 text-amber-700",
+      border: "border-amber-100",
+    },
+    red: {
+      icon: "bg-red-50 text-red-700",
+      border: "border-red-100",
+    },
+    navy: {
+      icon: "bg-slate-100 text-hpNavy",
+      border: "border-slate-100",
+    },
   };
 
+  const style = tones[tone] || tones.blue;
+
   return (
-    <div className="print-card rounded-3xl border border-slate-100 bg-white p-4 shadow-executive transition hover:-translate-y-1 sm:p-5">
+    <div
+      className={`rounded-3xl border ${style.border} bg-white p-4 shadow-sm sm:p-5`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-widest text-hpMuted">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
             {title}
           </p>
 
-          <p className="mt-2 truncate text-2xl font-black text-hpNavy sm:text-3xl">
+          <p className="mt-3 text-3xl font-black leading-none text-hpNavy">
             {value}
           </p>
 
-          <p className="mt-1 text-sm text-hpMuted">{detail}</p>
+          <p className="mt-3 text-sm leading-6 text-slate-500">
+            {detail}
+          </p>
         </div>
 
-        <div className={`rounded-2xl p-3 ${tones[tone]}`}>
-          <Icon size={22} />
+        <div className={`shrink-0 rounded-2xl p-3 ${style.icon}`}>
+          <Icon size={24} />
         </div>
       </div>
     </div>
   );
 }
 
-export default function KpiCards({ totals, redFlags }) {
-  const nonCallPaidHours =
-    Number(totals.availableHours || 0) +
-    Number(totals.breakHours || 0) +
-    Number(totals.offlineHours || 0);
+export default function KpiCards({
+  totals = {},
+  redFlags = [],
+  googleAgentCounts = [],
+}) {
+  const rosterAgentTotal = getRosterAgentTotal(googleAgentCounts);
 
-  const nonCallPaidPct =
-    totals.loggedHours > 0 ? (nonCallPaidHours / totals.loggedHours) * 100 : 0;
+  const utilizationAgentTotal = Number(totals.agentCount || 0);
+  const callCenterCount = Number(totals.callCenterCount || 0);
+
+  const loggedHours = Number(totals.loggedHours || 0);
+  const onCallHours = Number(totals.onCallHours || totals.phoneHours || 0);
+  const availableHours = Number(totals.availableHours || 0);
+  const breakHours = Number(totals.breakHours || 0);
+  const offlineHours = Number(totals.offlineHours || 0);
+
+  const productivity =
+    loggedHours > 0 ? (onCallHours / loggedHours) * 100 : 0;
+
+  const paidTimeNotOnCalls = availableHours + breakHours + offlineHours;
+
+  const criticalRisks = redFlags.filter((flag) => {
+    const severity = String(flag.severity || flag.status || "").toLowerCase();
+    return severity.includes("critical") || severity.includes("high");
+  }).length;
 
   return (
-    <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 lg:gap-5">
-      <Card
-        title="Report Period"
-        value={totals.reportDateRange || "N/A"}
-        detail={`${totals.reportDateCount || 0} detected day(s)`}
-        icon={CalendarDays}
-        tone="navy"
-      />
-
-      <Card
-        title="Total Agents"
-        value={totals.agentCount}
-        detail={`${totals.callCenterCount} call center(s)`}
+    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <KpiCard
+        title="Roster Agents"
+        value={rosterAgentTotal ? number(rosterAgentTotal) : number(utilizationAgentTotal)}
+        detail={
+          rosterAgentTotal
+            ? "From Google Sheet Agents_Master"
+            : "Google Sheet roster not loaded"
+        }
         icon={Users}
+        tone={rosterAgentTotal ? "green" : "amber"}
       />
 
-      <Card
+      <KpiCard
+        title="Utilization Agents"
+        value={number(utilizationAgentTotal)}
+        detail={`${number(callCenterCount)} call center(s) in Tableau reports`}
+        icon={UserCheck}
+        tone="blue"
+      />
+
+      <KpiCard
         title="Logged Hours"
-        value={hours(totals.loggedHours)}
-        detail={`${hours(totals.onCallHours)} on call`}
-        icon={Clock}
+        value={hours(loggedHours)}
+        detail={`${hours(onCallHours)} on call`}
+        icon={Clock3}
         tone="green"
       />
 
-      <Card
+      <KpiCard
         title="Paid-Time Productivity"
-        value={percent(totals.utilization)}
+        value={percent(productivity)}
         detail="On Call ÷ Logged Time"
         icon={Headphones}
-        tone={totals.utilization < 60 ? "red" : totals.utilization < 70 ? "amber" : "green"}
+        tone={productivity >= 70 ? "green" : productivity >= 45 ? "amber" : "red"}
       />
 
-      <Card
+      <KpiCard
         title="Paid Time Not On Calls"
-        value={hours(nonCallPaidHours)}
-        detail={`${nonCallPaidPct.toFixed(1)}% Available / Break / Offline`}
-        icon={Banknote}
-        tone={nonCallPaidPct > 40 ? "red" : nonCallPaidPct > 30 ? "amber" : "green"}
+        value={hours(paidTimeNotOnCalls)}
+        detail="Available + Break + Offline"
+        icon={TimerOff}
+        tone={paidTimeNotOnCalls > onCallHours ? "red" : "amber"}
       />
 
-      <Card
+      <KpiCard
         title="Operational Risks"
-        value={redFlags.length}
-        detail={`${redFlags.filter((flag) => flag.severity === "Critical").length} critical`}
+        value={number(redFlags.length)}
+        detail={`${number(criticalRisks)} critical / high`}
         icon={AlertTriangle}
-        tone={redFlags.some((flag) => flag.severity === "Critical") ? "red" : "amber"}
+        tone={criticalRisks > 0 ? "red" : redFlags.length > 0 ? "amber" : "green"}
       />
     </section>
   );
