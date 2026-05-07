@@ -6,9 +6,11 @@ import Sidebar from "./components/Sidebar";
 import UploadPanel from "./components/UploadPanel";
 import ScheduleUploadPanel from "./components/ScheduleUploadPanel";
 import AgentMappingNotice from "./components/AgentMappingNotice";
+import LoadingDog from "./components/LoadingDog";
 import UsageStats from "./components/UsageStats";
 import LeadershipBrief from "./components/LeadershipBrief";
 import BillableHoursAnalysis from "./components/BillableHoursAnalysis";
+import MappingCoverage from "./components/MappingCoverage";
 import AgentBalanceQueueRisk from "./components/AgentBalanceQueueRisk";
 import OperationsIntelligence from "./components/OperationsIntelligence";
 import ExecutiveSummary from "./components/ExecutiveSummary";
@@ -37,6 +39,7 @@ import { loadSavedReportFiles } from "./utils/savedReportLoader";
 import { loadSavedOperationsFiles } from "./utils/savedOperationsLoader";
 import { loadSavedAgentMappings } from "./utils/savedAgentMappingLoader";
 import { applyAgentMappings } from "./utils/agentMappingParser";
+import { loadGoogleSheetCore } from "./services/googleSheetApi";
 
 export default function App() {
   const [rows, setRows] = useState([]);
@@ -45,13 +48,32 @@ export default function App() {
   const [scheduleHistory, setScheduleHistory] = useState([]);
   const [operationsReports, setOperationsReports] = useState([]);
   const [agentMappingReports, setAgentMappingReports] = useState([]);
+
+  const [googleAgents, setGoogleAgents] = useState([]);
+  const [googleAgentCounts, setGoogleAgentCounts] = useState([]);
+  const [googleAgentMap, setGoogleAgentMap] = useState({});
+
   const [selectedSite, setSelectedSite] = useState("All");
   const [activeSection, setActiveSection] = useState("Billable Hours");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   const [scheduleLoadMessage, setScheduleLoadMessage] = useState("");
   const [reportLoadMessage, setReportLoadMessage] = useState("");
   const [operationsLoadMessage, setOperationsLoadMessage] = useState("");
   const [agentMappingLoadMessage, setAgentMappingLoadMessage] = useState("");
+  const [googleSheetLoadMessage, setGoogleSheetLoadMessage] = useState("");
+
+  const [loadingLabels, setLoadingLabels] = useState([]);
+
+  const startLoading = (label) => {
+    setLoadingLabels((current) =>
+      current.includes(label) ? current : [...current, label]
+    );
+  };
+
+  const stopLoading = (label) => {
+    setLoadingLabels((current) => current.filter((item) => item !== label));
+  };
 
   useEffect(() => {
     trackPageVisit();
@@ -64,13 +86,39 @@ export default function App() {
       })
       .catch((error) => console.warn("Upload history load failed:", error));
 
+    loadGoogleSheetOnStart();
     loadSavedReportsOnStart();
     loadSavedSchedulesOnStart();
     loadSavedOperationsOnStart();
     loadSavedAgentMappingsOnStart();
   }, []);
 
+  const loadGoogleSheetOnStart = async () => {
+    const label = "Google Sheet Agents_Master";
+    startLoading(label);
+
+    try {
+      const data = await loadGoogleSheetCore();
+
+      setGoogleAgents(data.agents || []);
+      setGoogleAgentCounts(data.agentCounts || []);
+      setGoogleAgentMap(data.agentMap || {});
+
+      setGoogleSheetLoadMessage(
+        `${(data.agents || []).length} active agent record(s) loaded from Google Sheet Agents_Master.`
+      );
+    } catch (error) {
+      console.warn("Google Sheet Agents_Master load failed:", error);
+      setGoogleSheetLoadMessage(error.message);
+    } finally {
+      stopLoading(label);
+    }
+  };
+
   const loadSavedReportsOnStart = async () => {
+    const label = "Tableau utilization reports";
+    startLoading(label);
+
     try {
       const { reports, errors } = await loadSavedReportFiles();
 
@@ -98,10 +146,15 @@ export default function App() {
     } catch (error) {
       console.warn("Saved reports failed:", error);
       setReportLoadMessage(error.message);
+    } finally {
+      stopLoading(label);
     }
   };
 
   const loadSavedSchedulesOnStart = async () => {
+    const label = "Schedule files";
+    startLoading(label);
+
     try {
       const { reports, errors } = await loadSavedScheduleReports();
 
@@ -123,10 +176,15 @@ export default function App() {
     } catch (error) {
       console.warn("Saved schedules failed:", error);
       setScheduleLoadMessage(error.message);
+    } finally {
+      stopLoading(label);
     }
   };
 
   const loadSavedOperationsOnStart = async () => {
+    const label = "Operations intelligence files";
+    startLoading(label);
+
     try {
       const { reports, errors } = await loadSavedOperationsFiles();
 
@@ -146,19 +204,24 @@ export default function App() {
     } catch (error) {
       console.warn("Saved operations files failed:", error);
       setOperationsLoadMessage(error.message);
+    } finally {
+      stopLoading(label);
     }
   };
 
   const loadSavedAgentMappingsOnStart = async () => {
+    const label = "Local agent mapping files";
+    startLoading(label);
+
     try {
       const { reports, errors } = await loadSavedAgentMappings();
 
       if (reports.length) {
         setAgentMappingReports(reports);
         setAgentMappingLoadMessage(
-          `${reports.length} agent mapping file(s) loaded automatically: ${reports
+          `${reports.length} local agent mapping file(s) loaded automatically: ${reports
             .map((report) => `${report.fileName} (${report.mappingCount} mappings)`)
-            .join(", ")}.`
+            .join(", ")}. Google Sheet Agents_Master is used first; local Excel mappings are fallback.`
         );
       }
 
@@ -169,12 +232,20 @@ export default function App() {
     } catch (error) {
       console.warn("Saved agent mappings failed:", error);
       setAgentMappingLoadMessage(error.message);
+    } finally {
+      stopLoading(label);
     }
   };
 
   const mappedRows = useMemo(
-    () => applyAgentMappings(rows, agentMappingReports),
-    [rows, agentMappingReports]
+    () =>
+      applyAgentMappings(
+        rows,
+        agentMappingReports,
+        operationsReports,
+        googleAgentMap
+      ),
+    [rows, agentMappingReports, operationsReports, googleAgentMap]
   );
 
   const dashboard = useMemo(() => calculateDashboard(mappedRows), [mappedRows]);
@@ -197,6 +268,7 @@ export default function App() {
   const hasUtilizationData = mappedRows.length > 0;
   const hasScheduleData = scheduleReports.length > 0;
   const hasOperationsData = operationsReports.length > 0;
+  const isLoading = loadingLabels.length > 0;
 
   const handleUploadComplete = async (reports) => {
     const parsedRows = reports.flatMap((report) => report.rows || []);
@@ -252,13 +324,18 @@ export default function App() {
     setScheduleHistory([]);
     setOperationsReports([]);
     setAgentMappingReports([]);
+    setGoogleAgents([]);
+    setGoogleAgentCounts([]);
+    setGoogleAgentMap({});
     setSelectedSite("All");
     setActiveSection("Billable Hours");
     setReportLoadMessage("");
     setScheduleLoadMessage("");
     setOperationsLoadMessage("");
     setAgentMappingLoadMessage("");
+    setGoogleSheetLoadMessage("");
 
+    await loadGoogleSheetOnStart();
     await loadSavedReportsOnStart();
     await loadSavedSchedulesOnStart();
     await loadSavedOperationsOnStart();
@@ -296,6 +373,15 @@ export default function App() {
 
     "Billable Hours": (
       <BillableHoursAnalysis
+        utilizationRows={mappedRows}
+        scheduleReports={scheduleReports}
+      />
+    ),
+
+    "Mapping Coverage": (
+      <MappingCoverage
+        googleAgents={googleAgents}
+        googleAgentCounts={googleAgentCounts}
         utilizationRows={mappedRows}
         scheduleReports={scheduleReports}
       />
@@ -367,6 +453,13 @@ export default function App() {
         />
 
         <main className="w-full min-w-0 space-y-5 lg:space-y-6">
+          {isLoading && (
+            <LoadingDog
+              title="Loading operations data..."
+              message={`Loading: ${loadingLabels.join(", ")}`}
+            />
+          )}
+
           <UploadPanel
             onUploadComplete={handleUploadComplete}
             history={history}
@@ -381,10 +474,49 @@ export default function App() {
 
           <AgentMappingNotice
             mappingReports={agentMappingReports}
-            mappingLoadMessage={agentMappingLoadMessage}
+            mappingLoadMessage={`${googleSheetLoadMessage} ${agentMappingLoadMessage}`}
           />
 
           <UsageStats />
+
+          {googleAgentCounts.length > 0 && (
+            <section className="rounded-3xl border border-green-100 bg-green-50 p-5 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-green-700">
+                Google Sheet Agents_Master
+              </p>
+
+              <h2 className="text-2xl font-black text-hpNavy">
+                Agent quantity from Google Sheet
+              </h2>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                {googleAgentCounts.map((item) => (
+                  <div
+                    key={item.vendor}
+                    className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-green-100"
+                  >
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                      {item.vendor}
+                    </p>
+
+                    <p className="mt-2 text-3xl font-black text-hpNavy">
+                      {item.activeAgents || item.agents}
+                    </p>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      Active agents
+                    </p>
+
+                    {!!item.missingNames && (
+                      <p className="mt-2 text-xs font-bold text-amber-700">
+                        {item.missingNames} missing names
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {hasUtilizationData && (
             <>

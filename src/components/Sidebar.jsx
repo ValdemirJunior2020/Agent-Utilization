@@ -6,6 +6,7 @@ import {
   BriefcaseBusiness,
   CalendarClock,
   ClipboardList,
+  Database,
   Gauge,
   Lightbulb,
   Scale,
@@ -16,17 +17,78 @@ import {
 } from "lucide-react";
 
 const items = [
-  { label: "Leadership Brief", icon: BriefcaseBusiness, accent: "from-blue-500 to-cyan-500" },
-  { label: "Billable Hours", icon: CalendarClock, accent: "from-emerald-500 to-green-500" },
-  { label: "Agent Balance & Queue Risk", icon: Scale, accent: "from-rose-500 to-red-500" },
-  { label: "Operations Intelligence", icon: Activity, accent: "from-violet-500 to-purple-500" },
-  { label: "Executive Summary", icon: ClipboardList, accent: "from-indigo-500 to-blue-500" },
-  { label: "Site Comparison", icon: BarChart3, accent: "from-sky-500 to-cyan-500" },
-  { label: "Agent Utilization", icon: Users, accent: "from-orange-500 to-amber-500" },
-  { label: "AUX Breakdown", icon: Gauge, accent: "from-pink-500 to-rose-500" },
-  { label: "Red Flags", icon: ShieldAlert, accent: "from-red-500 to-orange-500" },
-  { label: "Recommendations", icon: Lightbulb, accent: "from-yellow-500 to-amber-500" },
-  { label: "Raw Data", icon: Table2, accent: "from-slate-500 to-slate-700" },
+  {
+    label: "Leadership Brief",
+    icon: BriefcaseBusiness,
+    accent: "from-blue-500 to-cyan-500",
+    isNew: false,
+  },
+  {
+    label: "Billable Hours",
+    icon: CalendarClock,
+    accent: "from-emerald-500 to-green-500",
+    isNew: false,
+  },
+  {
+    label: "Mapping Coverage",
+    icon: Database,
+    accent: "from-yellow-400 to-amber-500",
+    isNew: true,
+  },
+  {
+    label: "Agent Balance & Queue Risk",
+    icon: Scale,
+    accent: "from-rose-500 to-red-500",
+    isNew: true,
+  },
+  {
+    label: "Operations Intelligence",
+    icon: Activity,
+    accent: "from-violet-500 to-purple-500",
+    isNew: true,
+  },
+  {
+    label: "Executive Summary",
+    icon: ClipboardList,
+    accent: "from-indigo-500 to-blue-500",
+    isNew: false,
+  },
+  {
+    label: "Site Comparison",
+    icon: BarChart3,
+    accent: "from-sky-500 to-cyan-500",
+    isNew: false,
+  },
+  {
+    label: "Agent Utilization",
+    icon: Users,
+    accent: "from-orange-500 to-amber-500",
+    isNew: false,
+  },
+  {
+    label: "AUX Breakdown",
+    icon: Gauge,
+    accent: "from-pink-500 to-rose-500",
+    isNew: false,
+  },
+  {
+    label: "Red Flags",
+    icon: ShieldAlert,
+    accent: "from-red-500 to-orange-500",
+    isNew: false,
+  },
+  {
+    label: "Recommendations",
+    icon: Lightbulb,
+    accent: "from-yellow-500 to-amber-500",
+    isNew: false,
+  },
+  {
+    label: "Raw Data",
+    icon: Table2,
+    accent: "from-slate-500 to-slate-700",
+    isNew: false,
+  },
 ];
 
 function SidebarContent({ activeSection, setActiveSection, onClose }) {
@@ -47,14 +109,16 @@ function SidebarContent({ activeSection, setActiveSection, onClose }) {
         <p className="text-xs font-black uppercase tracking-[0.22em] text-sky-100">
           Navigation
         </p>
+
         <h3 className="mt-1 text-lg font-black">Operations View</h3>
+
         <p className="mt-2 text-sm leading-6 text-sky-50">
-          Stronger visibility for leadership, utilization, balance, and queue risk.
+          Stronger visibility for leadership, utilization, balance, mapping, and queue risk.
         </p>
       </div>
 
       <nav className="space-y-2">
-        {items.map(({ label, icon: Icon, accent }) => {
+        {items.map(({ label, icon: Icon, accent, isNew }) => {
           const isActive = activeSection === label;
 
           return (
@@ -74,15 +138,21 @@ function SidebarContent({ activeSection, setActiveSection, onClose }) {
               }`}
             >
               <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r ${accent} ${
-                  isActive ? "text-white shadow-md" : "text-white opacity-95"
-                }`}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r ${accent} text-white shadow-sm`}
               >
                 <Icon size={18} />
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="truncate">{label}</div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{label}</span>
+
+                  {isNew && (
+                    <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-green-700 ring-1 ring-green-200">
+                      New
+                    </span>
+                  )}
+                </div>
               </div>
             </button>
           );
@@ -93,28 +163,19 @@ function SidebarContent({ activeSection, setActiveSection, onClose }) {
         <p className="text-xs font-black uppercase tracking-widest text-cyan-100">
           Manager Lens
         </p>
+
         <p className="mt-2 text-sm leading-6">
-          Review billable hours, agent balance, mapping coverage, and abandoned-call
-          pressure together.
+          Review roster coverage, billable hours, agent balance, and abandoned-call pressure together.
         </p>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-        <p className="text-xs font-black uppercase tracking-widest text-emerald-700">
-          New Control
+      <div className="mt-4 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 shadow-sm">
+        <p className="text-xs font-black uppercase tracking-widest text-yellow-700">
+          Data Source
         </p>
-        <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
-          Available is only a red flag when it is excessive or when queue pressure exists.
-        </p>
-      </div>
 
-      <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-        <p className="text-xs font-black uppercase tracking-widest text-amber-700">
-          Visibility Upgrade
-        </p>
         <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
-          Use the colored menu to switch faster between Balance Risk, Utilization, AUX,
-          and Executive Summary.
+          Google Sheet Agents_Master is the master roster. Tableau is activity. Schedule is coverage.
         </p>
       </div>
     </div>
