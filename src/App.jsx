@@ -9,6 +9,7 @@ import AgentMappingNotice from "./components/AgentMappingNotice";
 import UsageStats from "./components/UsageStats";
 import LeadershipBrief from "./components/LeadershipBrief";
 import BillableHoursAnalysis from "./components/BillableHoursAnalysis";
+import AgentBalanceQueueRisk from "./components/AgentBalanceQueueRisk";
 import OperationsIntelligence from "./components/OperationsIntelligence";
 import ExecutiveSummary from "./components/ExecutiveSummary";
 import KpiCards from "./components/KpiCards";
@@ -297,6 +298,13 @@ export default function App() {
       <BillableHoursAnalysis
         utilizationRows={mappedRows}
         scheduleReports={scheduleReports}
+      />
+    ),
+
+    "Agent Balance & Queue Risk": (
+      <AgentBalanceQueueRisk
+        utilizationRows={mappedRows}
+        operationsReports={operationsReports}
       />
     ),
 
